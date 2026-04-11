@@ -1,5 +1,2 @@
-VITE_SUPABASE_URL=https://kcveniekiinppbbytjrs.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_secret_bikUO59rPOahrU2U4axiJQ_qMt7UpUP
-RESEND_API_KEY = re_PjwriVU3_QA8ZiCpUoAK3y1geqLKSCmXX
-DIGEST_EMAIL   = jacquelyn.carmichael@waynestem.org
-
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
