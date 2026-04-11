@@ -1,4 +1,5 @@
 import { SB_URL, SB_KEY } from './config.js';
+import { openStudent, wireStudentLinks, stuNameLink } from './views/admin/student.js';
 
 'use strict';
 
@@ -152,7 +153,10 @@ var HOMEROOMS=ALL_CLASSES;
 var SER=['#00e6c8','#f0c040','#ff4466','#a78bfa','#34d399','#f97316','#60a5fa','#4d6490'];
 var SC={'PE':'#00e6c8','Technology':'#a78bfa','Art':'#f0c040','Music':'#ff4466','P.E.':'#00e6c8'};
 
-var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false};
+var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login'};
+var STU_PREV_SCREEN='S-detail';
+function setStuPrevScreen(v){ STU_PREV_SCREEN=v||'S-detail'; }
+function getStuPrevScreen(){ return STU_PREV_SCREEN||'S-detail'; }
 function todayStr(){return new Date().toISOString().split('T')[0];}
 function nowStr(){var d=new Date();return d.toTimeString().slice(0,5);}
 function freshEntry(){return{studentName:'',homeroom:'',specials:'',behaviors:[],date:todayStr(),time:nowStr(),colorChart:false,homeContact:false,notes:''};}
@@ -278,6 +282,7 @@ function signOut(){
 }
 
 function showScreen(id,back){
+  STATE.currentScreen=id;
   document.querySelectorAll('.screen').forEach(function(s){
     if(s.id===id){s.classList.remove('hidden','back');}
     else if(!s.classList.contains('hidden')){if(back)s.classList.add('back');s.classList.add('hidden');}
@@ -456,7 +461,7 @@ function renderHistory(){
         var hasNotes=l.notes&&l.notes.trim().length>0;
         return '<div class="log-item" data-uid="'+uid+'" style="'+(isDb?'border-color:rgba(0,230,200,.1)':'')+'">'+
           '<div class="log-hdr" data-toggle="'+uid+'">'+
-            '<div class="log-name">'+l.studentName+
+            '<div class="log-name">'+stuNameLink(l.studentName)+
               '<span class="log-chevron" id="chev-'+uid+'">▾</span>'+
             '</div>'+
             '<div class="log-time">'+(isDb?'<span style="color:var(--text3);margin-right:4px;font-size:9px">db</span>':'')+l.time+'</div>'+
@@ -482,11 +487,12 @@ function renderHistory(){
       }).join('');
   }).join('');
   body.innerHTML=summ+logHtml;
+  wireStudentLinks(body,'S-teacher');
   // bind toggles
   body.querySelectorAll('[data-toggle]').forEach(function(hdr){
     hdr.addEventListener('click',function(){
       var uid=hdr.dataset.toggle;
-      var det=el('det-'+uid),chev=el('chev-'+uid);
+      var det=body.querySelector('#det-'+uid),chev=body.querySelector('#chev-'+uid);
       var isOpen=det.classList.contains('open');
       // close all others
       body.querySelectorAll('.log-detail.open').forEach(function(d){d.classList.remove('open');});
@@ -706,6 +712,7 @@ function renderAdmin(){
   else content=bCL(live);
   body.innerHTML=INTERP+content;
   if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">⚠ Could not reach Supabase — showing cached data</div>'+body.innerHTML;
+  if(t==='students') wireStudentLinks(body,'S-admin');
   setTimeout(drawCharts,60);
   body.querySelectorAll('[data-cls]').forEach(function(r){r.addEventListener('click',function(){openDet(r.dataset.cls,live);});});
 }
@@ -910,6 +917,17 @@ function fetchClassIncidents(homeroom, cb){
     .catch(function(err){if(cb)cb(err,[]);});
 }
 
+function fetchStudentIncidents(name, cb){
+  if(!SESSION.token){ if(cb) cb(new Error('not authenticated'),[]); return; }
+  var tok=SESSION.token;
+  var q='select=*&student=eq.'+encodeURIComponent(name)+'&order=incident_date.desc,created_at.desc&limit=200';
+  fetch(SB_URL+'/rest/v1/incidents?'+q,{
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok}
+  }).then(function(r){return r.json();})
+    .then(function(rows){if(cb)cb(null,rows||[]);})
+    .catch(function(err){if(cb)cb(err,[]);});
+}
+
 // ── RENDER INCIDENT LOG LIST (reusable) ──
 function renderIncidentList(rows, container, onAfterEdit){
   if(!rows||!rows.length){
@@ -935,7 +953,7 @@ function renderIncidentList(rows, container, onAfterEdit){
           '<span style="font-size:9px;color:var(--text3);font-family:DM Mono,monospace;margin-left:4px">'+r.submitted_by.split('@')[0]+'</span>':'';
         return '<div class="log-item" data-uid="'+uid+'">'+
           '<div class="log-hdr" data-toggle="'+uid+'">'+
-            '<div class="log-name">'+escHtml(r.student||'—')+submitter+
+            '<div class="log-name">'+stuNameLink(r.student||'—')+submitter+
               '<span class="log-chevron" id="chev-'+uid+'">▾</span>'+
             '</div>'+
             '<div class="log-time">'+(r.incident_time||r.created_at.slice(11,16))+'</div>'+
@@ -960,11 +978,12 @@ function renderIncidentList(rows, container, onAfterEdit){
       }).join('');
   }).join('');
   container.innerHTML=html;
+  wireStudentLinks(container, getStuPrevScreen());
   // bind toggles
   container.querySelectorAll('[data-toggle]').forEach(function(hdr){
     hdr.addEventListener('click',function(){
       var uid=hdr.dataset.toggle;
-      var det=el('det-'+uid),chev=el('chev-'+uid);
+      var det=container.querySelector('#det-'+uid),chev=container.querySelector('#chev-'+uid);
       var isOpen=det.classList.contains('open');
       container.querySelectorAll('.log-detail.open').forEach(function(d){d.classList.remove('open');});
       container.querySelectorAll('.log-chevron.open').forEach(function(c){c.classList.remove('open');});
@@ -1017,7 +1036,8 @@ function openDet(id,live){
       '<div class="empty-t">No incidents logged</div>'+
       '<div class="empty-s">No specials incidents were recorded for this classroom during Jan 21 – Apr 1, 2026.<br><br>This may reflect genuinely smooth sessions, inconsistent logging, or limited specials overlap. It is not confirmation of no issues.</div></div>'+
       '<div style="height:16px"></div>';
-    showScreen('S-detail');
+    wireStudentLinks(el('det-body'),'S-detail');
+  showScreen('S-detail');
     return;
   }
 
@@ -1048,7 +1068,7 @@ function openDet(id,live){
     '<div class="sec">Behavior types</div><div class="card">'+
     c.behaviors.map(function(b,i){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+b.t+'</span><span style="font-family:DM Mono,monospace">'+b.n+'</span></div>'+pb((b.n/mxB)*100,SER[i%SER.length])+'</div>';}).join('')+'</div>'+
     '<div class="sec">Students</div><div class="card">'+
-    c.students.map(function(s){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+(s.name==='Other'?'var(--text2)':'var(--text)')+'">'+s.name+'</span><span style="font-family:DM Mono,monospace;color:'+(s.n>=5?'var(--red)':s.n>=3?'var(--amber)':'var(--text2)')+'">'+s.n+'</span></div>'+pb((s.n/mxS)*100,s.name==='Other'?'var(--text3)':s.n>=5?'var(--red)':s.n>=3?'var(--amber)':'var(--accent)')+'</div>';}).join('')+'</div>'+
+    c.students.map(function(s){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+(s.name==='Other'?'var(--text2)':'var(--text)')+'">'+stuNameLink(s.name)+'</span><span style="font-family:DM Mono,monospace;color:'+(s.n>=5?'var(--red)':s.n>=3?'var(--amber)':'var(--text2)')+'">'+s.n+'</span></div>'+pb((s.n/mxS)*100,s.name==='Other'?'var(--text3)':s.n>=5?'var(--red)':s.n>=3?'var(--amber)':'var(--accent)')+'</div>';}).join('')+'</div>'+
     '<div class="sec">By specials class</div><div class="card">'+
     Object.keys(c.specials).map(function(s){var n=c.specials[s];return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+(SC[s]||'var(--text2)')+'">'+s+'</span><span style="font-family:DM Mono,monospace">'+n+'</span></div>'+pb((n/mxSP)*100,SC[s]||'var(--text3)')+'</div>';}).join('')+'</div>'+
     '<div class="sec">Weekly trend</div><div class="card"><canvas id="c-det-wk" height="80" style="width:100%;display:block"></canvas></div>'+
@@ -1059,6 +1079,7 @@ function openDet(id,live){
   '<div id="det-inc-list" style="margin-bottom:16px"><div style="text-align:center;padding:20px 0;font-size:11px;color:var(--text3);letter-spacing:.06em">Fetching records…</div></div>'+
   '<div style="height:16px"></div>';
 
+  wireStudentLinks(el('det-body'),'S-detail');
   showScreen('S-detail');
   setTimeout(function(){
     drawBar('c-det-wk',c.weekly.map(function(w){return w.w;}),c.weekly.map(function(w){return w.n;}),c.weekly.map(function(_,i){return SER[i%SER.length];}));
@@ -1175,6 +1196,15 @@ el('AN-classes').addEventListener('click',function(){STATE.clsFilter='all';showS
 el('AN-log').addEventListener('click',goTeacher);
 el('btn-cls-back').addEventListener('click',function(){showScreen('S-admin',true);});
 el('btn-det-back').addEventListener('click',function(){showScreen('S-classes',true);var live=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;renderClsExplorer(live);});
+el('btn-stu-back') && el('btn-stu-back').addEventListener('click',function(){
+  var live=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;
+  if(getStuPrevScreen()==='S-classes'){
+    showScreen('S-classes',true);
+    renderClsExplorer(live);
+  } else {
+    showScreen(getStuPrevScreen(),true);
+  }
+});
 
 el('btn-det-log') && el('btn-det-log').addEventListener('click',function(){
   var hr=el('det-title').textContent;
@@ -1216,6 +1246,7 @@ el('es-save').addEventListener('click',function(){
   function resetBtn(){saveBtn.textContent='[ Save changes ]';saveBtn.disabled=false;}
   function onSaved(){
     var cb=EDIT_STATE.onAfterEdit;
+    resetBtn();
     closeEditSheet();
     STATE.myDbLogs=STATE.myDbLogs.map(function(row){
       if(String(row.id)===String(EDIT_STATE.dbId)){
@@ -1223,8 +1254,8 @@ el('es-save').addEventListener('click',function(){
       }
       return row;
     });
-    STATE.liveLoaded=false;STATE.liveRows=[];
-    if(cb){ setTimeout(cb,50); }
+    if(STATE.currentScreen==='S-admin'){STATE.liveLoaded=false;STATE.liveRows=[];}
+    if(cb){ setTimeout(function(){try{cb();}catch(e){console.error(e);}},50); }
     else { setTimeout(function(){STATE.myDbLoaded=true;renderHistory();},50); }
   }
 
@@ -1273,26 +1304,26 @@ el('es-save').addEventListener('click',function(){
 // ── DELETE CONFIRM EVENTS ──
 el('del-cancel-btn').addEventListener('click',closeDelConfirm);
 el('del-go-btn').addEventListener('click',function(){
-  if(!DEL_STATE.dbId){closeDelConfirm();return;}
+  function resetBtn(){el('del-go-btn').textContent='[ Delete ]';el('del-go-btn').disabled=false;}
+  if(!DEL_STATE.dbId){resetBtn();closeDelConfirm();return;}
   el('del-go-btn').textContent='[ Deleting… ]';
   el('del-go-btn').disabled=true;
-  if(!SESSION.token){el('del-go-btn').textContent='[ Delete ]';el('del-go-btn').disabled=false;closeDelConfirm();return;}
+  if(!SESSION.token){resetBtn();closeDelConfirm();return;}
   fetch(SB_URL+'/rest/v1/incidents?id=eq.'+DEL_STATE.dbId,{
     method:'DELETE',
     headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token,'Prefer':'return=minimal'}
   }).then(function(r){
     if(!r.ok) throw new Error('HTTP '+r.status);
     STATE.myDbLogs=STATE.myDbLogs.filter(function(row){return String(row.id)!==String(DEL_STATE.dbId);});
-    STATE.liveLoaded=false;STATE.liveRows=[];
+    if(STATE.currentScreen==='S-admin'){STATE.liveLoaded=false;STATE.liveRows=[];}
+    var cb=DEL_STATE.onAfterDelete;
+    resetBtn();
     closeDelConfirm();
-    if(DEL_STATE.onAfterDelete) DEL_STATE.onAfterDelete();
+    if(cb){ try{cb();}catch(e){console.error(e);} }
     else renderHistory();
-    el('del-go-btn').textContent='[ Delete ]';
-    el('del-go-btn').disabled=false;
   }).catch(function(){
+    resetBtn();
     closeDelConfirm();
-    el('del-go-btn').textContent='[ Delete ]';
-    el('del-go-btn').disabled=false;
   });
 });
 
@@ -1311,11 +1342,12 @@ export {
   saveSession, loadSession, refreshSession, signOut,
   initLogin, fetchRole,
   authedFetch, authedInsert, authedSelect,
-  fetchLiveData, buildLiveStats, fetchClassIncidents, renderIncidentList,
+  fetchLiveData, buildLiveStats, fetchClassIncidents, fetchStudentIncidents, renderIncidentList,
   sbInsert,
   drawLine, drawBar, pb,
   openEditSheet, closeEditSheet, populateEditSheet, openDelConfirm, closeDelConfirm,
   renderStep, goTeacher, showPane, closeSheet, renderHistory, fetchMyLogs,
   goAdmin, renderAdmin, setTab, bOV, bTM, bCV, bST, bCL,
-  renderClsExplorer, filterClasses, openDet
+  renderClsExplorer, filterClasses, openDet, showScreen, escHtml,
+  openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen
 };
