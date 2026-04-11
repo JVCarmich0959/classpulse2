@@ -1,0 +1,7 @@
+.stu-name-link{
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(0,230,200,.45);
+  text-underline-offset: 2px;
+}
