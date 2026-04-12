@@ -1,4 +1,3 @@
-
 STANDING RULES FOR CLASSPULSE — READ BEFORE TOUCHING ANY FILE
 
 This is a production app used by real teachers at a real school.
@@ -99,3 +98,9 @@ src/auth/, src/views/, src/api/, src/state/, src/components/
 are re-exports only. Do not move logic into them, do not
 create new module files, do not refactor the architecture.
 Make changes in place.
+KNOWN REPEAT OFFENDER: checkInviteToken
+This function is exported from src/auth/session.js and imported
+in src/main.js. It must NEVER be declared again in main.js.
+Before touching auth or session code, run:
+  grep -rn "function checkInviteToken" src/
+If it appears in more than one file, remove the duplicate in main.js.EOF
