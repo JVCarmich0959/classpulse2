@@ -437,12 +437,77 @@ function renderHistory(){
   }
   var chartCount=allLogs.filter(function(l){return l.colorChart||l.color_chart;}).length;
   var homeCount=allLogs.filter(function(l){return l.homeContact||l.home_contact;}).length;
-  var summ='<div class="sess-strip">'+
-    '<div class="ss-item"><div class="ss-val" style="color:var(--text)">'+STATE.logs.length+'</div><div class="ss-lbl">This session</div></div>'+
-    '<div class="ss-item"><div class="ss-val" style="color:var(--accent)">'+allLogs.length+'</div><div class="ss-lbl">Total yours</div></div>'+
-    '<div class="ss-item"><div class="ss-val" style="color:var(--green)">'+chartCount+'</div><div class="ss-lbl">Chart used</div></div>'+
-    '<div class="ss-item"><div class="ss-val" style="color:var(--amber)">'+homeCount+'</div><div class="ss-lbl">Home contact</div></div>'+
-    '</div>';
+  var chartPct=allLogs.length?Math.round(chartCount/allLogs.length*100):0;
+  var homePct=allLogs.length?Math.round(homeCount/allLogs.length*100):0;
+
+  var stuMap={};
+  allLogs.forEach(function(l){var n=l.studentName||'Unknown';stuMap[n]=(stuMap[n]||0)+1;});
+  var topStus=Object.keys(stuMap).map(function(k){return{name:k,n:stuMap[k]};}).sort(function(a,b){return b.n-a.n;}).slice(0,5);
+  var maxStu=topStus.length?topStus[0].n:1;
+
+  var behMap={};
+  allLogs.forEach(function(l){(l.behaviors||[]).forEach(function(b){behMap[b]=(behMap[b]||0)+1;});});
+  var topBehs=Object.keys(behMap).map(function(k){return{name:k,n:behMap[k]};}).sort(function(a,b){return b.n-a.n;}).slice(0,5);
+  var maxBeh=topBehs.length?topBehs[0].n:1;
+
+  var weekMap={};
+  allLogs.forEach(function(l){
+    if(!l.date) return;
+    var d=new Date(l.date+'T12:00:00');
+    var day=d.getDay();
+    var mon=new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
+    var wk=mon.toISOString().slice(0,10);
+    weekMap[wk]=(weekMap[wk]||0)+1;
+  });
+  var wkKeys=Object.keys(weekMap).sort().slice(-8);
+  var wkVals=wkKeys.map(function(k){return weekMap[k];});
+  var maxWk=Math.max.apply(null,wkVals)||1;
+  var wkW=280,wkH=44,pts=wkVals.map(function(v,i){
+    var x=wkVals.length<2?wkW/2:(i/(wkVals.length-1))*(wkW-20)+10;
+    var y=wkH-4-((v/maxWk)*(wkH-12));
+    return x+','+y;
+  }).join(' ');
+
+  function barRow(name,n,max,color){
+    var pct=Math.round((n/max)*100);
+    return '<div style="margin-bottom:7px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px">'+
+      '<span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%">'+escHtml(name)+'</span>'+
+      '<span style="font-family:DM Mono,monospace;color:'+color+'">'+n+'</span></div>'+
+      '<div style="height:3px;background:var(--bg3);border-radius:2px">'+
+      '<div style="height:3px;width:'+pct+'%;background:'+color+';border-radius:2px"></div>'+
+      '</div></div>';
+  }
+
+  var summ=
+    '<div class="sess-strip" style="margin-bottom:12px">'+
+      '<div class="ss-item"><div class="ss-val" style="color:var(--text)">'+allLogs.length+'</div><div class="ss-lbl">Total logged</div></div>'+
+      '<div class="ss-item"><div class="ss-val" style="color:var(--accent)">'+chartPct+'%</div><div class="ss-lbl">Chart used</div></div>'+
+      '<div class="ss-item"><div class="ss-val" style="color:var(--amber)">'+homePct+'%</div><div class="ss-lbl">Home contact</div></div>'+
+    '</div>'+
+    (wkVals.length>1?
+      '<div class="sec">Weekly trend</div>'+
+      '<div class="card" style="margin-bottom:10px;padding:10px 12px">'+
+        '<svg width="100%" height="'+wkH+'px" viewBox="0 0 '+wkW+' '+wkH+'" preserveAspectRatio="xMidYMid meet" style="display:block">'+
+          '<polyline points="'+pts+'" fill="none" stroke="#00e6c8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
+        '</svg>'+
+        '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);font-family:DM Mono,monospace;margin-top:4px">'+
+          '<span>'+(wkKeys[0]||'')+'</span><span>'+(wkKeys[wkKeys.length-1]||'')+'</span>'+
+        '</div>'+
+      '</div>'
+    :'')+
+    (topStus.length?
+      '<div class="sec">Your students</div>'+
+      '<div class="card" style="margin-bottom:10px">'+
+        topStus.map(function(s){return barRow(s.name,s.n,maxStu,'var(--accent)');}).join('')+
+      '</div>'
+    :'')+
+    (topBehs.length?
+      '<div class="sec">Behavior types</div>'+
+      '<div class="card" style="margin-bottom:10px">'+
+        topBehs.map(function(b){return barRow(b.name,b.n,maxBeh,'var(--amber)');}).join('')+
+      '</div>'
+    :'');
   var grouped={};
   allLogs.forEach(function(l,idx){
     var k=l.date||'Unknown date';
