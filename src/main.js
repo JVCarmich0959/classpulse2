@@ -1304,7 +1304,7 @@ function renderIncidentList(rows, container, onAfterEdit){
                 '<div style="font-size:10px;color:var(--text3);margin-bottom:8px;font-family:DM Mono,monospace;letter-spacing:.04em">— no notes —</div>')+
               '<div class="log-actions">'+
                 '<button class="log-act-btn edit" data-edit="'+uid+'" data-dbid="'+r.id+'">[ Edit ]</button>'+
-                '<button class="log-act-btn del" data-del="'+uid+'" data-dbid="'+r.id+'">[ Delete ]</button>'+
+                (SESSION.role==='admin'?'<button class="log-act-btn del" data-del="'+uid+'" data-dbid="'+r.id+'">[ Delete ]</button>':'')+
               '</div>'+
             '</div>'+
           '</div>'+
@@ -1388,7 +1388,7 @@ function openDet(id,live){
   var summBlock='<div class="det-summary">'+
     '<div class="ds-item"><div class="ds-lbl">Top behavior</div><div class="ds-val hi">'+topBeh+'</div></div>'+
     '<div class="ds-item"><div class="ds-lbl">Highest-repeat student</div><div class="ds-val hi">'+topStu+'</div></div>'+
-    '<div class="ds-item"><div class="ds-lbl">Primary specials source</div><div class="ds-val hi">'+topSpec+'</div></div>'+
+    '<div class="ds-item"><div class="ds-lbl">Top subject</div><div class="ds-val hi">'+topSpec+'</div></div>'+
     '<div class="ds-item"><div class="ds-lbl">Chart use · Home contact</div><div class="ds-val hi">'+c.chart+'% · '+c.home+'%</div></div>'+
     '</div>';
 
@@ -1398,12 +1398,12 @@ function openDet(id,live){
     kpiH('Total incidents',c.total,'specials logs',false)+
     kpiH('Chart used',c.chart+'%','',c.chart<30)+
     kpiH('Home contact',c.home+'%','',c.home===0)+
-    '<div class="kpi"><div class="lbl">Specials logged</div><div class="val">'+Object.keys(c.specials).filter(function(k){return c.specials[k]>0;}).length+'/4</div></div></div>'+
+    '<div class="kpi"><div class="lbl">Subjects logged</div><div class="val">'+Object.keys(c.specials).filter(function(k){return c.specials[k]>0;}).length+'</div></div></div>'+
     '<div class="sec">Behavior types</div><div class="card">'+
     c.behaviors.map(function(b,i){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+b.t+'</span><span style="font-family:DM Mono,monospace">'+b.n+'</span></div>'+pb((b.n/mxB)*100,SER[i%SER.length])+'</div>';}).join('')+'</div>'+
     '<div class="sec">Students</div><div class="card">'+
     c.students.map(function(s){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+(s.name==='Other'?'var(--text2)':'var(--text)')+'">'+stuNameLink(s.name)+'</span><span style="font-family:DM Mono,monospace;color:'+(s.n>=5?'var(--red)':s.n>=3?'var(--amber)':'var(--text2)')+'">'+s.n+'</span></div>'+pb((s.n/mxS)*100,s.name==='Other'?'var(--text3)':s.n>=5?'var(--red)':s.n>=3?'var(--amber)':'var(--accent)')+'</div>';}).join('')+'</div>'+
-    '<div class="sec">By specials class</div><div class="card">'+
+    '<div class="sec">By subject</div><div class="card">'+
     Object.keys(c.specials).map(function(s){var n=c.specials[s];return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+(SC[s]||'var(--text2)')+'">'+s+'</span><span style="font-family:DM Mono,monospace">'+n+'</span></div>'+pb((n/mxSP)*100,SC[s]||'var(--text3)')+'</div>';}).join('')+'</div>'+
     '<div class="sec">Weekly trend</div><div class="card"><canvas id="c-det-wk" height="80" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec" style="display:flex;justify-content:space-between;align-items:center">'+
