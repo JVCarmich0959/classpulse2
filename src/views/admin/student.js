@@ -1,5 +1,5 @@
 import { SB_URL, SB_KEY } from '../../config.js';
-import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen } from '../../main.js';
+import { SESSION, STATE, goTeacher, showPane, renderStep, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen } from '../../main.js';
 
 function fetchStudentNote(name, cb){
   if(!SESSION.token){ if(cb) cb(new Error('not authenticated'), ''); return; }
@@ -86,6 +86,21 @@ function openStudent(name, prevScreen){
     });
     var topBehavior = Object.keys(behCounts).sort(function(a,b){ return behCounts[b]-behCounts[a]; })[0] || '—';
     var topSpecial = Object.keys(spCounts).sort(function(a,b){ return spCounts[b]-spCounts[a]; })[0] || '—';
+    var firstHomeroom = (rows[0] && rows[0].homeroom) ? rows[0].homeroom : '';
+    var notesSection = '';
+    var incidentsHeader = '<div class="sec" style="display:flex;justify-content:space-between;align-items:center">'+
+      '<span>'+((SESSION.role === 'admin') ? 'All incidents' : 'Incidents')+'</span>'+
+      '<button class="btn-ok" id="stu-relog">[ + Log incident ]</button>'+
+    '</div>';
+    if(SESSION.role === 'admin'){
+      notesSection =
+        '<div class="card" style="margin-bottom:10px">'+
+          '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Admin notes</div>'+
+          '<textarea id="stu-notes-ta" style="width:100%;min-height:88px;background:var(--panel);border:0.5px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit"></textarea>'+
+          '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="pill" id="stu-save-note">[ Save note ]</button></div>'+
+          '<div id="stu-note-status" style="font-size:10px;color:var(--text3);margin-top:6px"></div>'+
+        '</div>';
+    }
 
     if(title) title.textContent = name || 'Student';
     if(sub) sub.textContent = total + ' incidents';
@@ -98,32 +113,41 @@ function openStudent(name, prevScreen){
         '<div class="kpi"><div class="lbl">Top behavior</div><div class="val" style="font-size:13px">'+escHtml(topBehavior)+'</div></div>'+
       '</div>'+
       '<div class="card" style="margin-bottom:10px"><div style="font-size:11px;color:var(--text2);margin-bottom:6px">Most-logged specials class</div><div style="font-size:14px">'+escHtml(topSpecial)+'</div></div>'+
-      '<div class="card" style="margin-bottom:10px">'+
-        '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Admin notes</div>'+
-        '<textarea id="stu-notes-ta" style="width:100%;min-height:88px;background:var(--panel);border:0.5px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit"></textarea>'+
-        '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="pill" id="stu-save-note">[ Save note ]</button></div>'+
-        '<div id="stu-note-status" style="font-size:10px;color:var(--text3);margin-top:6px"></div>'+
-      '</div>'+
-      '<div class="sec" style="display:flex;justify-content:space-between;align-items:center">All incidents</div>'+
+      notesSection+
+      incidentsHeader+
       '<div id="stu-inc-list"></div>';
 
-    fetchStudentNote(name, function(_e, note){
-      var ta = document.getElementById('stu-notes-ta');
-      if(ta) ta.value = note || '';
-    });
-
-    var saveBtn = document.getElementById('stu-save-note');
-    if(saveBtn){
-      saveBtn.addEventListener('click', function(){
+    if(SESSION.role === 'admin'){
+      fetchStudentNote(name, function(_e, note){
         var ta = document.getElementById('stu-notes-ta');
-        var st = document.getElementById('stu-note-status');
-        saveBtn.disabled = true;
-        saveBtn.textContent = '[ Saving… ]';
-        saveStudentNote(name, ta ? ta.value : '', function(e2){
-          saveBtn.disabled = false;
-          saveBtn.textContent = '[ Save note ]';
-          if(st) st.textContent = e2 ? 'Save failed' : 'Saved';
+        if(ta) ta.value = note || '';
+      });
+
+      var saveBtn = document.getElementById('stu-save-note');
+      if(saveBtn){
+        saveBtn.addEventListener('click', function(){
+          var ta = document.getElementById('stu-notes-ta');
+          var st = document.getElementById('stu-note-status');
+          saveBtn.disabled = true;
+          saveBtn.textContent = '[ Saving… ]';
+          saveStudentNote(name, ta ? ta.value : '', function(e2){
+            saveBtn.disabled = false;
+            saveBtn.textContent = '[ Save note ]';
+            if(st) st.textContent = e2 ? 'Save failed' : 'Saved';
+          });
         });
+      }
+    }
+
+    var relogBtn = document.getElementById('stu-relog');
+    if(relogBtn){
+      relogBtn.addEventListener('click', function(){
+        if(SESSION.role !== 'admin') goTeacher();
+        if(!STATE.entry) STATE.entry = {};
+        STATE.entry.studentName = name || '';
+        STATE.entry.homeroom = firstHomeroom || STATE.entry.homeroom || '';
+        showPane('log');
+        renderStep();
       });
     }
 
