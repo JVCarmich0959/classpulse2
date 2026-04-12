@@ -33,7 +33,7 @@ function fetchRole(userId, cb){
     headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok}
   }).then(function(r){ return r.json(); })
     .then(function(rows){
-      var role = (rows && rows[0] && rows[0].role) || 'teacher';
+      var role = (rows && rows[0] && rows[0].role) || 'specials';
       if(cb) cb(null, role);
     })
     .catch(function(err){ if(cb) cb(err, 'teacher'); });
@@ -1184,15 +1184,15 @@ function drawBar(id,labels,data,colors){
 el('btn-t-signout') && el('btn-t-signout').addEventListener('click',signOut);
 el('btn-th-signout') && el('btn-th-signout').addEventListener('click',signOut);
 el('btn-a-signout') && el('btn-a-signout').addEventListener('click',signOut);
-el('btn-t-switch').addEventListener('click',goAdmin);
-el('btn-th-switch').addEventListener('click',goAdmin);
+el('btn-t-switch').addEventListener('click',function(){ if(SESSION.role==='admin') goAdmin(); });
+el('btn-th-switch').addEventListener('click',function(){ if(SESSION.role==='admin') goAdmin(); });
 el('TN-log').addEventListener('click',function(){showPane('log');});
 el('TN-hist').addEventListener('click',function(){showPane('hist');});
 el('T-overlay').addEventListener('click',closeSheet);
 el('btn-log-another').addEventListener('click',closeSheet);
 el('btn-a-log').addEventListener('click',goTeacher);
 el('btn-export') && el('btn-export').addEventListener('click',exportCSV);
-el('AN-classes').addEventListener('click',function(){STATE.clsFilter='all';showScreen('S-classes');renderClsExplorer(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);});
+el('AN-classes').addEventListener('click',function(){ if(SESSION.role!=='admin') return; STATE.clsFilter='all';showScreen('S-classes');renderClsExplorer(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);});
 el('AN-log').addEventListener('click',goTeacher);
 el('btn-cls-back').addEventListener('click',function(){showScreen('S-admin',true);});
 el('btn-det-back').addEventListener('click',function(){showScreen('S-classes',true);var live=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;renderClsExplorer(live);});
