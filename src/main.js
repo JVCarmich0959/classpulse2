@@ -303,11 +303,14 @@ function initLogin(){
     showScreen('S-loading');
     var stopEeg=startEegAnimation();
     updateUserDisplay();
-    fetchRole(SESSION.userId, function(err, role){
-      if(stopEeg) stopEeg();
-      if(err || !role){ showScreen('S-login'); return; }
-      SESSION.role = role;
-      if(role === 'admin'){ goAdmin(); } else { goTeacher(); }
+    // Always refresh token on restore — localStorage persists beyond 1hr token expiry
+    refreshSession(function(ok){
+      fetchRole(SESSION.userId, function(err, role){
+        if(stopEeg) stopEeg();
+        if(err || !role){ showScreen('S-login'); return; }
+        SESSION.role = role;
+        if(role === 'admin'){ goAdmin(); } else { goTeacher(); }
+      });
     });
     return;
   }
