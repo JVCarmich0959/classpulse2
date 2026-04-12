@@ -807,8 +807,7 @@ function bOV(live){
 }
 function bTM(live){
   var LD=live||{};
-  return 
-    '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per school day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
+  return '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per school day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">Heatmap · time block × weekday</div><div class="card" style="overflow-x:auto">'+bHeat()+'</div>';
 }
 function bHeat(){
@@ -828,9 +827,7 @@ function bCV(){
   function pc(p){return p>=80?'var(--green)':p>=50?'var(--amber)':'var(--red)';}
   function lc(l){return l<=2.5?'var(--green)':l<=4?'var(--amber)':'var(--red)';}
   function cc(c){return c>=60?'var(--green)':c<25?'var(--red)':'var(--amber)';}
-  return alrt('Music logged in only 4 of 11 weeks with highest submission lag (6.8h). Weaker coverage.')+
-    alrt('2nd-Pollard has 0% chart use across 5 incidents — no interventions documented.')+
-    '<div class="card" style="overflow-x:auto"><table class="ctable"><thead><tr><th>Specials</th><th>Wks</th><th>Lag</th><th>Chart</th><th>Pattern</th></tr></thead><tbody>'+
+  return     '<div class="card" style="overflow-x:auto"><table class="ctable"><thead><tr><th>Specials</th><th>Wks</th><th>Lag</th><th>Chart</th><th>Pattern</th></tr></thead><tbody>'+
     conD.map(function(r){return '<tr><td style="font-weight:600;color:'+(SC[r.n]||'var(--text)')+'">'+r.n+'</td>'+
       '<td style="font-family:DM Mono,monospace">'+r.a+'/11 <span style="font-size:10px;color:'+pc(r.p)+'">'+r.p+'%</span></td>'+
       '<td><span class="tag" style="background:'+lc(r.l)+'22;color:'+lc(r.l)+'">'+r.l+'h</span></td>'+
