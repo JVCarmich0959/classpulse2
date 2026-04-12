@@ -964,8 +964,14 @@ function bOV(live){
     }())+'</div>';
 }
 function bTM(live){
-  var LD=live||{};
+  var rows=STATE.liveRows||[];
+  if(!rows.length){
+    return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
+  }
   return '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per school day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
+    '<div class="sec">Weekly longitudinal trend</div><div class="card"><canvas id="c-tm-wk" height="80" style="width:100%;display:block"></canvas></div>'+
+    '<div class="sec">Monthly incident totals</div><div class="card"><canvas id="c-tm-mo" height="90" style="width:100%;display:block"></canvas></div>'+
+    '<div class="sec">By class block</div><div class="card"><canvas id="c-tm-pd" height="90" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">When it happens</div><div class="card" id="heat-card" style="overflow-x:auto">'+bHeat('all')+'</div>';
 }
 // ── INTERACTIVE HEATMAP ──
@@ -994,6 +1000,49 @@ function getPeriod(timeStr){
     if(m>=s&&m<=e) return PERIODS[i].label;
   }
   return null;
+}
+function buildTimingStats(rows){
+  var weeklyMap={}, monthlyMap={}, periodMap={};
+  PERIODS.forEach(function(p){ periodMap[p.label]=0; });
+  (rows||[]).forEach(function(r){
+    var ds=(r.incident_date||(r.created_at||'').slice(0,10));
+    if(ds){
+      var d=new Date(ds+'T12:00:00');
+      if(!isNaN(d)){
+        var day=d.getDay();
+        var mon=new Date(d);
+        mon.setDate(d.getDate()-(day===0?6:day-1));
+        var wk=mon.toISOString().slice(0,10);
+        weeklyMap[wk]=(weeklyMap[wk]||0)+1;
+        var mk=ds.slice(0,7);
+        monthlyMap[mk]=(monthlyMap[mk]||0)+1;
+      }
+    }
+    var p=getPeriod(r.incident_time||(r.created_at||'').slice(11,16));
+    if(p) periodMap[p]=(periodMap[p]||0)+1;
+  });
+  var wkKeys=Object.keys(weeklyMap).sort().slice(-10);
+  var moKeys=Object.keys(monthlyMap).sort().slice(-6);
+  return {
+    weekly:{
+      labels:wkKeys.map(function(k){
+        var d=new Date(k+'T12:00:00');
+        return isNaN(d)?k:(d.toLocaleString('en-US',{month:'short'})+' '+d.getDate());
+      }),
+      values:wkKeys.map(function(k){return weeklyMap[k]||0;})
+    },
+    monthly:{
+      labels:moKeys.map(function(k){
+        var d=new Date(k+'-01T12:00:00');
+        return isNaN(d)?k:d.toLocaleString('en-US',{month:'short'});
+      }),
+      values:moKeys.map(function(k){return monthlyMap[k]||0;})
+    },
+    periods:{
+      labels:PERIODS.map(function(p){return p.label;}),
+      values:PERIODS.map(function(p){return periodMap[p.label]||0;})
+    }
+  };
 }
 
 function buildHeatGrid(rows, subjectFilter){
@@ -1590,9 +1639,24 @@ function drawCharts(){
     drawBar('c-gr',D.grades.map(function(d){return d.g;}),D.grades.map(function(d){return d.n;}),D.grades.map(function(d,i){return SER[i];}));
   }
   if(t==='timing'){
-    var liveDow=(STATE.liveRows.length&&buildLiveStats(STATE.liveRows)||{}).dow||D.dow;
+    var rows=STATE.liveRows||[];
+    var liveDow=(rows.length&&buildLiveStats(rows)||{}).dow||[
+      {d:'Monday',r:0},{d:'Tuesday',r:0},{d:'Wednesday',r:0},{d:'Thursday',r:0},{d:'Friday',r:0}
+    ];
     var mxD=Math.max.apply(null,liveDow.map(function(d){return d.r;}));
     drawBar('c-dow',liveDow.map(function(d){return d.d.slice(0,3);}),liveDow.map(function(d){return d.r;}),liveDow.map(function(d){return d.r===mxD?'#ff4466':'#00e6c8';}));
+    var tm=buildTimingStats(rows);
+    if(tm.weekly.values.length){
+      drawLine('c-tm-wk',tm.weekly.labels,tm.weekly.values);
+    }
+    if(tm.monthly.values.length){
+      drawBar('c-tm-mo',tm.monthly.labels,tm.monthly.values,tm.monthly.values.map(function(_,i){return SER[i%SER.length];}));
+    }
+    if(tm.periods.values.reduce(function(a,b){return a+b;},0)>0){
+      drawBar('c-tm-pd',tm.periods.labels,tm.periods.values,tm.periods.values.map(function(v){
+        return v>0?'#00e6c8':'rgba(0,230,200,.2)';
+      }));
+    }
   }
 }
 function drawLine(id,labels,d1){
