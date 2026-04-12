@@ -356,7 +356,7 @@ function attachSL(){
   var fhr=el('f-hr');if(fhr)fhr.addEventListener('change',function(){STATE.entry.homeroom=fhr.value;});
   document.querySelectorAll('[data-sp]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.specials=btn.dataset.sp;document.querySelectorAll('[data-sp]').forEach(function(b){b.classList.toggle('on',b.dataset.sp===STATE.entry.specials);});});});
   var s1n=el('s1-next');
-  if(s1n)s1n.addEventListener('click',function(){if(!STATE.entry.studentName.trim()||!STATE.entry.homeroom||!STATE.entry.specials){alert('Please fill in student name, homeroom, and your specials class.');return;}STATE.step=1;renderStep();});
+  if(s1n)s1n.addEventListener('click',function(){if(!STATE.entry.studentName.trim()||!STATE.entry.homeroom||!STATE.entry.specials){alert('Please fill in student name, homeroom, and subject.');return;}STATE.step=1;renderStep();});
   document.querySelectorAll('[data-beh]').forEach(function(btn){btn.addEventListener('click',function(){var b=btn.dataset.beh,idx=STATE.entry.behaviors.indexOf(b);if(idx>=0)STATE.entry.behaviors.splice(idx,1);else STATE.entry.behaviors.push(b);document.querySelectorAll('[data-beh]').forEach(function(c){c.classList.toggle('on',STATE.entry.behaviors.indexOf(c.dataset.beh)>=0);});});});
   var s2b=el('s2-back');if(s2b)s2b.addEventListener('click',function(){STATE.step=0;renderStep();});
   var s2n=el('s2-next');if(s2n)s2n.addEventListener('click',function(){if(!STATE.entry.behaviors.length){alert('Please select at least one behavior type.');return;}STATE.step=2;renderStep();});
@@ -371,7 +371,7 @@ function attachSL(){
   var sub=el('s4-sub');
   if(sub)sub.addEventListener('click',function(){
     var e=STATE.entry;
-    var row={student:e.studentName,homeroom:e.homeroom,specials:e.specials,behaviors:e.behaviors.slice(),incident_date:e.date||null,incident_time:e.time||null,color_chart:e.colorChart,home_contact:e.homeContact,notes:e.notes||null,submitted_by:SESSION.email||'specials-team'};
+    var row={student:e.studentName,homeroom:e.homeroom,specials:e.specials,subject:e.specials,teacher_role:SESSION.role||'specials',behaviors:e.behaviors.slice(),incident_date:e.date||null,incident_time:e.time||null,color_chart:e.colorChart,home_contact:e.homeContact,notes:e.notes||null,submitted_by:SESSION.email||'specials-team'};
     var log=Object.assign({},row,{studentName:e.studentName,colorChart:e.colorChart,homeContact:e.homeContact,date:e.date,time:e.time,id:Date.now()});
     STATE.logs.unshift(log);
     el('sheet-detail').textContent=e.studentName+' · '+e.specials+' · '+(e.behaviors.length?e.behaviors.join(', '):'—');
@@ -696,7 +696,7 @@ function buildLiveStats(rows){
   var grades = gradeOrder.filter(function(g){return gradeCounts[g];}).map(function(g){return{g:g,n:gradeCounts[g]};});
   // specials
   var spCounts = {};
-  rows.forEach(function(r){spCounts[r.specials]=(spCounts[r.specials]||0)+1;});
+  rows.forEach(function(r){var s=r.subject||r.specials;if(s)spCounts[s]=(spCounts[s]||0)+1;});
   var specials = Object.keys(spCounts).sort(function(a,b){return spCounts[b]-spCounts[a];}).map(function(k){return{n:k,total:spCounts[k]};});
   // DOW
   var dowCounts = {};var dowDays = {Monday:9,Tuesday:9,Wednesday:9,Thursday:9,Friday:8};
@@ -1064,7 +1064,7 @@ function renderIncidentList(rows, container, onAfterEdit){
       var row=null;for(var i=0;i<rows.length;i++){if(String(rows[i].id)===String(dbId)){row=rows[i];break;}}
       if(!row)return;
       // convert DB row to log-like object
-      var logObj={dbId:row.id,studentName:row.student,homeroom:row.homeroom,specials:row.specials,
+      var logObj={dbId:row.id,studentName:row.student,homeroom:row.homeroom,specials:row.subject||row.specials,subject:row.subject||row.specials,
         behaviors:row.behaviors||[],date:row.incident_date,time:row.incident_time,
         colorChart:row.color_chart,homeContact:row.home_contact,notes:row.notes||'',fromDb:true};
       // open edit sheet using existing openEditSheet logic
@@ -1315,7 +1315,7 @@ el('es-save').addEventListener('click',function(){
     closeEditSheet();
     STATE.myDbLogs=STATE.myDbLogs.map(function(row){
       if(String(row.id)===String(EDIT_STATE.dbId)){
-        return Object.assign({},row,{student:updates.student,homeroom:updates.homeroom,specials:updates.specials,behaviors:updates.behaviors,incident_date:updates.incident_date,incident_time:updates.incident_time,color_chart:updates.color_chart,home_contact:updates.home_contact,notes:updates.notes});
+        return Object.assign({},row,{student:updates.student,homeroom:updates.homeroom,specials:updates.specials,subject:updates.specials,behaviors:updates.behaviors,incident_date:updates.incident_date,incident_time:updates.incident_time,color_chart:updates.color_chart,home_contact:updates.home_contact,notes:updates.notes});
       }
       return row;
     });
