@@ -771,7 +771,7 @@ function renderAdmin(){
   var live=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;
   var content='';
   if(t==='overview') content=bOV(live);
-  else if(t==='timing') content=bTM(live);
+  else if(t==='timing'){ content=bTM(live); setTimeout(function(){ wireHeat('all'); },50); }
   else if(t==='coverage') content=bCV();
   else if(t==='students') content=bST(live);
   else content=bCL(live);
@@ -808,19 +808,157 @@ function bOV(live){
 function bTM(live){
   var LD=live||{};
   return '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per school day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
-    '<div class="sec">Heatmap · time block × weekday</div><div class="card" style="overflow-x:auto">'+bHeat()+'</div>';
+    '<div class="sec">When it happens</div><div class="card" id="heat-card" style="overflow-x:auto">'+bHeat('all')+'</div>';
 }
-function bHeat(){
-  var hmD=[{b:'9-10am',Mon:4,Tue:3,Wed:6,Thu:3,Fri:2},{b:'10-11am',Mon:7,Tue:5,Wed:8,Thu:5,Fri:2},{b:'11-12pm',Mon:2,Tue:2,Wed:3,Thu:1,Fri:0},{b:'12-1pm',Mon:0,Tue:2,Wed:2,Thu:2,Fri:1},{b:'1-2pm',Mon:3,Tue:8,Wed:7,Thu:4,Fri:1},{b:'2-3pm',Mon:7,Tue:6,Wed:6,Thu:6,Fri:2}];
-  var cols=['Mon','Tue','Wed','Thu','Fri'],mx=0;
-  hmD.forEach(function(r){cols.forEach(function(c){if(r[c]>mx)mx=r[c];});});
-  var h='<table class="htable"><thead><tr><th style="text-align:left">Block</th>'+cols.map(function(c){return '<th>'+c+'</th>';}).join('')+'</tr></thead><tbody>';
-  hmD.forEach(function(row){
-    h+='<tr><td style="text-align:left;color:var(--text3);font-size:9px;white-space:nowrap;font-family:DM Mono,monospace">'+row.b+'</td>';
-    cols.forEach(function(c){var v=row[c]||0,a=mx?v/mx:0;h+='<td style="background:rgba(0,230,200,'+(0.06+a*0.46).toFixed(2)+');color:'+(a>.5?'var(--text)':'var(--text2)')+'">'+( v||'—')+'</td>';});
+// ── INTERACTIVE HEATMAP ──
+var PERIODS=[
+  {label:'P1',start:'7:50',end:'8:45'},
+  {label:'P2',start:'8:55',end:'9:45'},
+  {label:'P3',start:'10:15',end:'11:05'},
+  {label:'Lunch',start:'11:06',end:'11:45'},
+  {label:'P4',start:'11:50',end:'12:40'},
+  {label:'P5',start:'1:00',end:'1:50'},
+  {label:'P6',start:'2:00',end:'2:50'}
+];
+var HEAT_DAYS=['Mon','Tue','Wed','Thu','Fri'];
+var HEAT_DAY_FULL=['Monday','Tuesday','Wednesday','Thursday','Friday'];
+
+function timeToMin(t){
+  if(!t) return -1;
+  var p=t.split(':');
+  return parseInt(p[0],10)*60+(parseInt(p[1],10)||0);
+}
+function getPeriod(timeStr){
+  var m=timeToMin(timeStr);
+  if(m<0) return null;
+  for(var i=0;i<PERIODS.length;i++){
+    var s=timeToMin(PERIODS[i].start),e=timeToMin(PERIODS[i].end);
+    if(m>=s&&m<=e) return PERIODS[i].label;
+  }
+  return null;
+}
+
+function buildHeatGrid(rows, subjectFilter){
+  var grid={};
+  var incidents={};
+  PERIODS.forEach(function(p){
+    grid[p.label]={};
+    incidents[p.label]={};
+    HEAT_DAYS.forEach(function(d){
+      grid[p.label][d]=0;
+      incidents[p.label][d]=[];
+    });
+  });
+  rows.forEach(function(r){
+    if(subjectFilter && subjectFilter!=='all'){
+      var s=r.subject||r.specials;
+      if(s!==subjectFilter) return;
+    }
+    if(!r.incident_date&&!r.created_at) return;
+    var dateStr=r.incident_date||r.created_at.slice(0,10);
+    var d=new Date(dateStr+'T12:00:00');
+    var dow=d.getDay();
+    if(dow===0||dow===6) return;
+    var dayLabel=HEAT_DAYS[dow-1];
+    var period=getPeriod(r.incident_time||r.created_at.slice(11,16));
+    if(!period) return;
+    grid[period][dayLabel]++;
+    incidents[period][dayLabel].push(r);
+  });
+  return {grid:grid,incidents:incidents};
+}
+
+function bHeat(subjectFilter){
+  var rows=STATE.liveRows||[];
+  var data=buildHeatGrid(rows,subjectFilter||'all');
+  var grid=data.grid;
+  var mx=0;
+  PERIODS.forEach(function(p){HEAT_DAYS.forEach(function(d){if(grid[p.label][d]>mx)mx=grid[p.label][d];});});
+
+  var subjects=['all'].concat(Object.keys(rows.reduce(function(a,r){var s=r.subject||r.specials;if(s)a[s]=1;return a;},{})));
+  var filterHtml='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+
+    subjects.map(function(s){
+      var on=(subjectFilter||'all')===s;
+      return '<button type="button" data-hf="'+escHtml(s)+'" style="'+
+        'font-size:10px;font-family:DM Mono,monospace;letter-spacing:.06em;padding:4px 10px;'+
+        'border-radius:10px;border:1px solid '+(on?'var(--accent)':'rgba(0,230,200,.25)')+';'+
+        'background:'+(on?'rgba(0,230,200,.12)':'transparent')+';'+
+        'color:'+(on?'var(--accent)':'var(--text3)')+';cursor:pointer">'+(s==='all'?'All':escHtml(s))+'</button>';
+    }).join('')+'</div>';
+
+  var h='<table class="htable" style="width:100%;border-collapse:collapse">'+
+    '<thead><tr>'+
+    '<th style="text-align:left;font-size:9px;color:var(--text3);padding:4px 8px 4px 0;font-weight:400;min-width:48px">Period</th>'+
+    HEAT_DAYS.map(function(d){return '<th style="font-size:9px;color:var(--text3);padding:4px 6px;font-weight:400;text-align:center">'+d+'</th>';}).join('')+
+    '</tr></thead><tbody>';
+
+  PERIODS.forEach(function(p){
+    h+='<tr>';
+    h+='<td style="font-size:9px;color:var(--text3);padding:6px 8px 6px 0;white-space:nowrap;font-family:DM Mono,monospace;vertical-align:middle">'+
+      '<div style="font-weight:600;color:var(--text2)">'+p.label+'</div>'+
+      '<div style="font-size:8px;opacity:.6">'+p.start+'</div></td>';
+    HEAT_DAYS.forEach(function(d){
+      var v=grid[p.label][d];
+      var a=mx?v/mx:0;
+      var bg=v===0?'transparent':'rgba(0,230,200,'+(0.08+a*0.5).toFixed(2)+')';
+      if(a>0.7) bg='rgba(255,68,102,'+(0.3+a*0.4).toFixed(2)+')';
+      var txt=v===0?'<span style="color:var(--text3);font-size:10px">·</span>':
+        '<span style="font-size:12px;font-weight:600;color:'+(a>0.5?'var(--text)':'var(--text2)')+'">'+v+'</span>';
+      h+='<td style="text-align:center;padding:4px 2px;cursor:'+(v>0?'pointer':'default')+'"'+
+        (v>0?' data-hp="'+escHtml(p.label)+'" data-hd="'+escHtml(d)+'"':'')+
+        ' title="'+p.label+' '+d+': '+v+' incident'+(v===1?'':'s')+'">'+
+        '<div style="background:'+bg+';border-radius:4px;padding:6px 4px;min-width:32px">'+txt+'</div></td>';
+    });
     h+='</tr>';
   });
-  return h+'</tbody></table>';
+
+  h+='</tbody></table>';
+  var drillHtml='<div id="heat-drill" style="display:none;margin-top:12px;border-top:1px solid rgba(0,230,200,.15);padding-top:12px">'+
+    '<div id="heat-drill-hdr" style="font-size:11px;color:var(--accent);font-family:DM Mono,monospace;margin-bottom:8px"></div>'+
+    '<div id="heat-drill-list"></div></div>';
+
+  return filterHtml+h+drillHtml;
+}
+
+function wireHeat(subjectFilter){
+  var card=document.getElementById('heat-card');
+  if(!card) return;
+  card.addEventListener('click',function(e){
+    // filter chip
+    var hf=e.target.closest('[data-hf]');
+    if(hf){
+      var s=hf.dataset.hf;
+      card.innerHTML=bHeat(s);
+      wireHeat(s);
+      return;
+    }
+    // cell click
+    var hp=e.target.closest('[data-hp]');
+    if(hp){
+      var period=hp.dataset.hp, day=hp.dataset.hd;
+      var data=buildHeatGrid(STATE.liveRows||[],subjectFilter||'all');
+      var list=(data.incidents[period]&&data.incidents[period][day])||[];
+      var drill=document.getElementById('heat-drill');
+      var hdr=document.getElementById('heat-drill-hdr');
+      var ul=document.getElementById('heat-drill-list');
+      if(!drill) return;
+      if(!list.length){drill.style.display='none';return;}
+      hdr.textContent=period+' · '+HEAT_DAY_FULL[HEAT_DAYS.indexOf(day)]+' — '+list.length+' incident'+(list.length===1?'':'s');
+      ul.innerHTML=list.map(function(r){
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(0,230,200,.08);font-size:11px">'+
+          '<div>'+
+            '<span style="color:var(--text);font-weight:600">'+escHtml(r.student||'')+'</span>'+
+            '<span style="color:var(--text3);margin-left:6px;font-size:10px">'+escHtml(r.homeroom||'')+'</span>'+
+          '</div>'+
+          '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">'+
+            (r.subject||r.specials?'<span class="tag blue">'+escHtml(r.subject||r.specials)+'</span>':'')+
+            (r.incident_date?'<span class="tag gray" style="font-size:9px">'+r.incident_date+'</span>':'')+
+          '</div>'+
+        '</div>';
+      }).join('');
+      drill.style.display='block';
+    }
+  });
 }
 function bCV(){
   var conD=[{n:'Technology',a:11,p:100,l:1.9,c:45,pat:'Consistent'},{n:'PE',a:11,p:100,l:2.4,c:46,pat:'Active all year'},{n:'Art',a:11,p:100,l:3.1,c:32,pat:'Lower volume'},{n:'Music',a:4,p:36,l:6.8,c:11,pat:'Intermittent'}];
