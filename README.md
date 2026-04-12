@@ -9,7 +9,11 @@ Standardizes behavior tracking across classrooms
 Aggregates incident data in real time
 Visualizes trends by time, class, grade, and teacher
 Highlights patterns that inform intervention decisions
+
 ## Architecture
+
+![ClassPulse Architecture](assets/architecture.png)
+
 ### Stack
 * Frontend: Vite + Vanilla JS (SPA)
 * Backend: Supabase (Auth + Database + REST)
