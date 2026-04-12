@@ -1,5 +1,5 @@
 import { SB_URL, SB_KEY } from '../../config.js';
-import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen } from '../../main.js';
+import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard } from '../../main.js';
 
 function fetchStudentNote(name, cb){
   if(!SESSION.token){ if(cb) cb(new Error('not authenticated'), ''); return; }
@@ -50,6 +50,35 @@ function wireStudentLinks(container, prevScreen){
   });
 }
 
+function studentDateStr(r){
+  return r.incident_date || (r.created_at||'').slice(0,10) || '';
+}
+function studentWeekStart(dateStr){
+  if(!dateStr) return '';
+  var d=new Date(dateStr+'T12:00:00');
+  if(isNaN(d)) return '';
+  var day=d.getDay();
+  var mon=new Date(d);
+  mon.setDate(d.getDate()-(day===0?6:day-1));
+  return mon.toISOString().slice(0,10);
+}
+function buildStudentWeekly(rows){
+  var wk={};
+  (rows||[]).forEach(function(r){
+    var k=studentWeekStart(studentDateStr(r));
+    if(!k) return;
+    wk[k]=(wk[k]||0)+1;
+  });
+  var keys=Object.keys(wk).sort().slice(-10);
+  return {
+    labels:keys.map(function(k){
+      var d=new Date(k+'T12:00:00');
+      return isNaN(d)?k:(d.toLocaleString('en-US',{month:'short'})+' '+d.getDate());
+    }),
+    values:keys.map(function(k){return wk[k]||0;})
+  };
+}
+
 function openStudent(name, prevScreen){
   var map = {
     'S-detail':'‹ Class',
@@ -97,6 +126,8 @@ function openStudent(name, prevScreen){
         '<div class="kpi"><div class="lbl">Home contact</div><div class="val">'+(total?Math.round(homeY/total*100):0)+'%</div></div>'+
         '<div class="kpi"><div class="lbl">Top behavior</div><div class="val" style="font-size:13px">'+escHtml(topBehavior)+'</div></div>'+
       '</div>'+
+      '<div class="sec">Weekly trend</div><div class="card" style="margin-bottom:10px"><canvas id="stu-wk-line" height="80" style="width:100%;display:block"></canvas></div>'+
+      '<div class="sec">Weekly pattern heatmap</div><div class="card" id="stu-heat-card" style="margin-bottom:10px;overflow-x:auto"></div>'+
       '<div class="card" style="margin-bottom:10px"><div style="font-size:11px;color:var(--text2);margin-bottom:6px">Most-logged specials class</div><div style="font-size:14px">'+escHtml(topSpecial)+'</div></div>'+
       (SESSION.role==='admin' ?
         '<div class="card" style="margin-bottom:10px">'+
@@ -106,7 +137,7 @@ function openStudent(name, prevScreen){
           '<div id="stu-note-status" style="font-size:10px;color:var(--text3);margin-top:6px"></div>'+
         '</div>'
       : '')+
-      '<div class="sec" style="display:flex;justify-content:space-between;align-items:center">All incidents</div>'+
+      '<div class="sec" style="display:flex;justify-content:space-between;align-items:center">All incidents <span id="stu-inc-meta" style="font-size:10px;color:var(--text3);font-family:DM Mono,monospace"></span></div>'+
       '<div id="stu-inc-list"></div>';
 
     if(SESSION.role==='admin'){
@@ -131,12 +162,54 @@ function openStudent(name, prevScreen){
     }
 
     var listEl = document.getElementById('stu-inc-list');
+    var metaEl = document.getElementById('stu-inc-meta');
+    var weekly=buildStudentWeekly(rows);
+    if(weekly.values.length){
+      setTimeout(function(){ drawLine('stu-wk-line', weekly.labels, weekly.values); },20);
+    }
+    var activeRows=rows.slice();
+    function renderStudentList(nextRows){
+      activeRows=nextRows||[];
+      if(metaEl) metaEl.textContent=activeRows.length+' records';
+      renderIncidentList(activeRows, listEl, onRefresh);
+    }
     var onRefresh = function(){
       fetchStudentIncidents(name, function(_e2, rows2){
-        renderIncidentList(rows2 || [], listEl, onRefresh);
+        rows=rows2||[];
+        var wk2=buildStudentWeekly(rows);
+        if(wk2.values.length){
+          setTimeout(function(){ drawLine('stu-wk-line', wk2.labels, wk2.values); },20);
+        }
+        wireHeatCard('stu-heat-card', rows, {
+          prefix:'stu-heat',
+          showFilters:false,
+          onCellClick:function(filteredRows, ctx){
+            if(!filteredRows.length){
+              if(metaEl) metaEl.textContent='0 records · '+ctx.period+' '+ctx.day;
+              renderIncidentList([], listEl, onRefresh);
+              return;
+            }
+            if(metaEl) metaEl.textContent=filteredRows.length+' records · '+ctx.period+' '+ctx.day;
+            renderIncidentList(filteredRows, listEl, onRefresh);
+          }
+        });
+        renderStudentList(rows);
       });
     };
-    renderIncidentList(rows, listEl, onRefresh);
+    wireHeatCard('stu-heat-card', rows, {
+      prefix:'stu-heat',
+      showFilters:false,
+      onCellClick:function(filteredRows, ctx){
+        if(!filteredRows.length){
+          if(metaEl) metaEl.textContent='0 records · '+ctx.period+' '+ctx.day;
+          renderIncidentList([], listEl, onRefresh);
+          return;
+        }
+        if(metaEl) metaEl.textContent=filteredRows.length+' records · '+ctx.period+' '+ctx.day;
+        renderIncidentList(filteredRows, listEl, onRefresh);
+      }
+    });
+    renderStudentList(rows);
     wireStudentLinks(body, 'S-student');
   });
 }

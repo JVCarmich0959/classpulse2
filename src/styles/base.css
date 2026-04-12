@@ -65,6 +65,13 @@ option{background:#0c1219}
 .ni svg{width:22px;height:22px;stroke:var(--text3);fill:none;stroke-width:2;transition:stroke .15s}
 .ni span{font-size:10px;color:var(--text3);font-weight:500;transition:color .15s}
 .ni.on svg{stroke:var(--accent)}.ni.on span{color:var(--accent)}
+.install-app-btn{
+  position:fixed;right:14px;bottom:calc(var(--sb) + 14px);z-index:120;
+  border:1px solid var(--accent);background:rgba(6,10,15,.92);color:var(--accent);
+  border-radius:20px;padding:10px 14px;font-size:11px;letter-spacing:.08em;
+  text-transform:uppercase;font-family:DM Mono,monospace;cursor:pointer;
+}
+.install-app-btn:active{transform:scale(.98)}
 .tab-row{display:flex;gap:6px;overflow-x:auto;padding:0 14px 10px;flex-shrink:0}
 .tab-row::-webkit-scrollbar{display:none}
 .tab{background:var(--card);border:0.5px solid var(--border);border-radius:20px;padding:7px 14px;font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;white-space:nowrap;font-family:DM Mono,monospace}
@@ -184,6 +191,11 @@ html::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;b
 .btn-p:active{background:rgba(0,230,200,.12)}
 .btn-ok{background:transparent;letter-spacing:.04em}
 .dot.active{background:var(--accent)}
+
+@media (max-width:520px){
+  .pill,.tab,.chip,.fchip,.back-btn,.ni{min-height:44px}
+  input[type=text],input[type=date],input[type=time],select,textarea{font-size:16px}
+}
 
 /* login screen */
 #S-login{justify-content:center;align-items:center;padding:20px;background:var(--bg)}
