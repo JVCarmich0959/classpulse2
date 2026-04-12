@@ -1,4 +1,5 @@
 import { SB_URL, SB_KEY } from './config.js';
+import { checkInviteToken } from './auth/session.js';
 import { openStudent, wireStudentLinks, stuNameLink } from './views/admin/student.js';
 
 'use strict';
@@ -33,7 +34,7 @@ function fetchRole(userId, cb){
     headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok}
   }).then(function(r){ return r.json(); })
     .then(function(rows){
-      var role = (rows && rows[0] && rows[0].role) || 'teacher';
+      var role = (rows && rows[0] && rows[0].role) || 'specials';
       if(cb) cb(null, role);
     })
     .catch(function(err){ if(cb) cb(err, 'teacher'); });
@@ -400,7 +401,7 @@ function attachSL(){
   var fhr=el('f-hr');if(fhr)fhr.addEventListener('change',function(){STATE.entry.homeroom=fhr.value;});
   document.querySelectorAll('[data-sp]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.specials=btn.dataset.sp;document.querySelectorAll('[data-sp]').forEach(function(b){b.classList.toggle('on',b.dataset.sp===STATE.entry.specials);});});});
   var s1n=el('s1-next');
-  if(s1n)s1n.addEventListener('click',function(){if(!STATE.entry.studentName.trim()||!STATE.entry.homeroom||!STATE.entry.specials){alert('Please fill in student name, homeroom, and your specials class.');return;}STATE.step=1;renderStep();});
+  if(s1n)s1n.addEventListener('click',function(){if(!STATE.entry.studentName.trim()||!STATE.entry.homeroom||!STATE.entry.specials){alert('Please fill in student name, homeroom, and subject.');return;}STATE.step=1;renderStep();});
   document.querySelectorAll('[data-beh]').forEach(function(btn){btn.addEventListener('click',function(){var b=btn.dataset.beh,idx=STATE.entry.behaviors.indexOf(b);if(idx>=0)STATE.entry.behaviors.splice(idx,1);else STATE.entry.behaviors.push(b);document.querySelectorAll('[data-beh]').forEach(function(c){c.classList.toggle('on',STATE.entry.behaviors.indexOf(c.dataset.beh)>=0);});});});
   var s2b=el('s2-back');if(s2b)s2b.addEventListener('click',function(){STATE.step=0;renderStep();});
   var s2n=el('s2-next');if(s2n)s2n.addEventListener('click',function(){if(!STATE.entry.behaviors.length){alert('Please select at least one behavior type.');return;}STATE.step=2;renderStep();});
@@ -415,7 +416,7 @@ function attachSL(){
   var sub=el('s4-sub');
   if(sub)sub.addEventListener('click',function(){
     var e=STATE.entry;
-    var row={student:e.studentName,homeroom:e.homeroom,specials:e.specials,behaviors:e.behaviors.slice(),incident_date:e.date||null,incident_time:e.time||null,color_chart:e.colorChart,home_contact:e.homeContact,notes:e.notes||null,submitted_by:SESSION.email||'specials-team'};
+    var row={student:e.studentName,homeroom:e.homeroom,specials:e.specials,subject:e.specials,teacher_role:SESSION.role||'specials',behaviors:e.behaviors.slice(),incident_date:e.date||null,incident_time:e.time||null,color_chart:e.colorChart,home_contact:e.homeContact,notes:e.notes||null,submitted_by:SESSION.email||'specials-team'};
     var log=Object.assign({},row,{studentName:e.studentName,colorChart:e.colorChart,homeContact:e.homeContact,date:e.date,time:e.time,id:Date.now()});
     STATE.logs.unshift(log);
     el('sheet-detail').textContent=e.studentName+' · '+e.specials+' · '+(e.behaviors.length?e.behaviors.join(', '):'—');
@@ -547,7 +548,7 @@ function renderHistory(){
   });
   var allLogs=STATE.logs.concat(filteredDb);
   if(!allLogs.length){
-    body.innerHTML='<div class="empty"><div class="empty-ico">📋</div><div class="empty-t">No logs yet</div><div class="empty-s">Your incidents will appear here as you log them.</div></div>';
+    body.innerHTML='<div class="empty"><div class="empty-t">No logs yet</div><div class="empty-s">Your incidents will appear here as you log them.</div></div>';
     return;
   }
   var chartCount=allLogs.filter(function(l){return l.colorChart||l.color_chart;}).length;
@@ -822,7 +823,7 @@ function buildLiveStats(rows){
   var grades = gradeOrder.filter(function(g){return gradeCounts[g];}).map(function(g){return{g:g,n:gradeCounts[g]};});
   // specials
   var spCounts = {};
-  rows.forEach(function(r){spCounts[r.specials]=(spCounts[r.specials]||0)+1;});
+  rows.forEach(function(r){var s=r.subject||r.specials;if(s)spCounts[s]=(spCounts[s]||0)+1;});
   var specials = Object.keys(spCounts).sort(function(a,b){return spCounts[b]-spCounts[a];}).map(function(k){return{n:k,total:spCounts[k]};});
   // DOW
   var dowCounts = {};var dowDays = {Monday:9,Tuesday:9,Wednesday:9,Thursday:9,Friday:8};
@@ -886,23 +887,22 @@ function buildLiveStats(rows){
 function setTab(t){STATE.adminTab=t;document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab===t);});renderAdmin();}
 
 // Interpretation note shown once at top of admin, persists across tabs
-var INTERP='<div class="interp-note"><strong>About these numbers.</strong> Behavior patterns and documentation patterns are not the same thing. A lower incident count for a class may reflect genuinely fewer incidents <em>or</em> less consistent logging — both are possible. Specials counts are partial: they cover only P.E., Technology, Art, and Music, not homeroom or schoolwide referrals. Do not compare classes on count alone without checking coverage.</div>';
 
 function renderAdmin(){
   var body=el('admin-body'),t=STATE.adminTab;
   if(!STATE.liveLoaded){
-    body.innerHTML=INTERP+'<div style="text-align:center;padding:40px 0;color:var(--text3);font-size:12px;letter-spacing:.06em">LOADING LIVE DATA…</div>';
+    body.innerHTML='<div style="text-align:center;padding:40px 0;color:var(--text3);font-size:12px;letter-spacing:.06em">LOADING LIVE DATA…</div>';
     fetchLiveData(function(){renderAdmin();});
     return;
   }
   var live=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;
   var content='';
   if(t==='overview') content=bOV(live);
-  else if(t==='timing') content=bTM(live);
+  else if(t==='timing'){ content=bTM(live); setTimeout(function(){ wireHeat('all'); },50); }
   else if(t==='coverage') content=bCV();
   else if(t==='students') content=bST(live);
   else content=bCL(live);
-  body.innerHTML=INTERP+content;
+  body.innerHTML=content;
   if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">⚠ Could not reach Supabase — showing cached data</div>'+body.innerHTML;
   if(t==='students') wireStudentLinks(body,'S-admin');
   setTimeout(drawCharts,60);
@@ -934,39 +934,275 @@ function bOV(live){
 }
 function bTM(live){
   var LD=live||{};
-  return alrt('Wednesday leads at 8.0 incidents/day — new finding from real data. Monday is second at 5.89.')+
-    '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per school day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
-    '<div class="sec">Heatmap · time block × weekday</div><div class="card" style="overflow-x:auto">'+bHeat()+'</div>';
+  return '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per school day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
+    '<div class="sec">When it happens</div><div class="card" id="heat-card" style="overflow-x:auto">'+bHeat('all')+'</div>';
 }
-function bHeat(){
-  var hmD=[{b:'9-10am',Mon:4,Tue:3,Wed:6,Thu:3,Fri:2},{b:'10-11am',Mon:7,Tue:5,Wed:8,Thu:5,Fri:2},{b:'11-12pm',Mon:2,Tue:2,Wed:3,Thu:1,Fri:0},{b:'12-1pm',Mon:0,Tue:2,Wed:2,Thu:2,Fri:1},{b:'1-2pm',Mon:3,Tue:8,Wed:7,Thu:4,Fri:1},{b:'2-3pm',Mon:7,Tue:6,Wed:6,Thu:6,Fri:2}];
-  var cols=['Mon','Tue','Wed','Thu','Fri'],mx=0;
-  hmD.forEach(function(r){cols.forEach(function(c){if(r[c]>mx)mx=r[c];});});
-  var h='<table class="htable"><thead><tr><th style="text-align:left">Block</th>'+cols.map(function(c){return '<th>'+c+'</th>';}).join('')+'</tr></thead><tbody>';
-  hmD.forEach(function(row){
-    h+='<tr><td style="text-align:left;color:var(--text3);font-size:9px;white-space:nowrap;font-family:DM Mono,monospace">'+row.b+'</td>';
-    cols.forEach(function(c){var v=row[c]||0,a=mx?v/mx:0;h+='<td style="background:rgba(0,230,200,'+(0.06+a*0.46).toFixed(2)+');color:'+(a>.5?'var(--text)':'var(--text2)')+'">'+( v||'—')+'</td>';});
+// ── INTERACTIVE HEATMAP ──
+var PERIODS=[
+  {label:'P1',start:'7:50',end:'8:45'},
+  {label:'P2',start:'8:55',end:'9:45'},
+  {label:'P3',start:'10:15',end:'11:05'},
+  {label:'Lunch',start:'11:06',end:'11:45'},
+  {label:'P4',start:'11:50',end:'12:40'},
+  {label:'P5',start:'1:00',end:'1:50'},
+  {label:'P6',start:'2:00',end:'2:50'}
+];
+var HEAT_DAYS=['Mon','Tue','Wed','Thu','Fri'];
+var HEAT_DAY_FULL=['Monday','Tuesday','Wednesday','Thursday','Friday'];
+
+function timeToMin(t){
+  if(!t) return -1;
+  var p=t.split(':');
+  return parseInt(p[0],10)*60+(parseInt(p[1],10)||0);
+}
+function getPeriod(timeStr){
+  var m=timeToMin(timeStr);
+  if(m<0) return null;
+  for(var i=0;i<PERIODS.length;i++){
+    var s=timeToMin(PERIODS[i].start),e=timeToMin(PERIODS[i].end);
+    if(m>=s&&m<=e) return PERIODS[i].label;
+  }
+  return null;
+}
+
+function buildHeatGrid(rows, subjectFilter){
+  var grid={};
+  var incidents={};
+  PERIODS.forEach(function(p){
+    grid[p.label]={};
+    incidents[p.label]={};
+    HEAT_DAYS.forEach(function(d){
+      grid[p.label][d]=0;
+      incidents[p.label][d]=[];
+    });
+  });
+  rows.forEach(function(r){
+    if(subjectFilter && subjectFilter!=='all'){
+      var s=r.subject||r.specials;
+      if(s!==subjectFilter) return;
+    }
+    if(!r.incident_date&&!r.created_at) return;
+    var dateStr=r.incident_date||r.created_at.slice(0,10);
+    var d=new Date(dateStr+'T12:00:00');
+    var dow=d.getDay();
+    if(dow===0||dow===6) return;
+    var dayLabel=HEAT_DAYS[dow-1];
+    var period=getPeriod(r.incident_time||r.created_at.slice(11,16));
+    if(!period) return;
+    grid[period][dayLabel]++;
+    incidents[period][dayLabel].push(r);
+  });
+  return {grid:grid,incidents:incidents};
+}
+
+function bHeat(subjectFilter){
+  var rows=STATE.liveRows||[];
+  var data=buildHeatGrid(rows,subjectFilter||'all');
+  var grid=data.grid;
+  var mx=0;
+  PERIODS.forEach(function(p){HEAT_DAYS.forEach(function(d){if(grid[p.label][d]>mx)mx=grid[p.label][d];});});
+
+  var subjects=['all'].concat(Object.keys(rows.reduce(function(a,r){var s=r.subject||r.specials;if(s)a[s]=1;return a;},{})));
+  var filterHtml='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+
+    subjects.map(function(s){
+      var on=(subjectFilter||'all')===s;
+      return '<button type="button" data-hf="'+escHtml(s)+'" style="'+
+        'font-size:10px;font-family:DM Mono,monospace;letter-spacing:.06em;padding:4px 10px;'+
+        'border-radius:10px;border:1px solid '+(on?'var(--accent)':'rgba(0,230,200,.25)')+';'+
+        'background:'+(on?'rgba(0,230,200,.12)':'transparent')+';'+
+        'color:'+(on?'var(--accent)':'var(--text3)')+';cursor:pointer">'+(s==='all'?'All':escHtml(s))+'</button>';
+    }).join('')+'</div>';
+
+  var h='<table class="htable" style="width:100%;border-collapse:collapse">'+
+    '<thead><tr>'+
+    '<th style="text-align:left;font-size:9px;color:var(--text3);padding:4px 8px 4px 0;font-weight:400;min-width:48px">Period</th>'+
+    HEAT_DAYS.map(function(d){return '<th style="font-size:9px;color:var(--text3);padding:4px 6px;font-weight:400;text-align:center">'+d+'</th>';}).join('')+
+    '</tr></thead><tbody>';
+
+  PERIODS.forEach(function(p){
+    h+='<tr>';
+    h+='<td style="font-size:9px;color:var(--text3);padding:6px 8px 6px 0;white-space:nowrap;font-family:DM Mono,monospace;vertical-align:middle">'+
+      '<div style="font-weight:600;color:var(--text2)">'+p.label+'</div>'+
+      '<div style="font-size:8px;opacity:.6">'+p.start+'</div></td>';
+    HEAT_DAYS.forEach(function(d){
+      var v=grid[p.label][d];
+      var a=mx?v/mx:0;
+      var bg=v===0?'transparent':'rgba(0,230,200,'+(0.08+a*0.5).toFixed(2)+')';
+      if(a>0.7) bg='rgba(255,68,102,'+(0.3+a*0.4).toFixed(2)+')';
+      var txt=v===0?'<span style="color:var(--text3);font-size:10px">·</span>':
+        '<span style="font-size:12px;font-weight:600;color:'+(a>0.5?'var(--text)':'var(--text2)')+'">'+v+'</span>';
+      h+='<td style="text-align:center;padding:4px 2px;cursor:'+(v>0?'pointer':'default')+'"'+
+        (v>0?' data-hp="'+escHtml(p.label)+'" data-hd="'+escHtml(d)+'"':'')+
+        ' title="'+p.label+' '+d+': '+v+' incident'+(v===1?'':'s')+'">'+
+        '<div style="background:'+bg+';border-radius:4px;padding:6px 4px;min-width:32px">'+txt+'</div></td>';
+    });
     h+='</tr>';
   });
-  return h+'</tbody></table>';
+
+  h+='</tbody></table>';
+  var drillHtml='<div id="heat-drill" style="display:none;margin-top:12px;border-top:1px solid rgba(0,230,200,.15);padding-top:12px">'+
+    '<div id="heat-drill-hdr" style="font-size:11px;color:var(--accent);font-family:DM Mono,monospace;margin-bottom:8px"></div>'+
+    '<div id="heat-drill-list"></div></div>';
+
+  return filterHtml+h+drillHtml;
+}
+
+function wireHeat(subjectFilter){
+  var card=document.getElementById('heat-card');
+  if(!card) return;
+  card.addEventListener('click',function(e){
+    // filter chip
+    var hf=e.target.closest('[data-hf]');
+    if(hf){
+      var s=hf.dataset.hf;
+      card.innerHTML=bHeat(s);
+      wireHeat(s);
+      return;
+    }
+    // cell click
+    var hp=e.target.closest('[data-hp]');
+    if(hp){
+      var period=hp.dataset.hp, day=hp.dataset.hd;
+      var data=buildHeatGrid(STATE.liveRows||[],subjectFilter||'all');
+      var list=(data.incidents[period]&&data.incidents[period][day])||[];
+      var drill=document.getElementById('heat-drill');
+      var hdr=document.getElementById('heat-drill-hdr');
+      var ul=document.getElementById('heat-drill-list');
+      if(!drill) return;
+      if(!list.length){drill.style.display='none';return;}
+      hdr.textContent=period+' · '+HEAT_DAY_FULL[HEAT_DAYS.indexOf(day)]+' — '+list.length+' incident'+(list.length===1?'':'s');
+      ul.innerHTML=list.map(function(r){
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(0,230,200,.08);font-size:11px">'+
+          '<div>'+
+            '<span style="color:var(--text);font-weight:600">'+escHtml(r.student||'')+'</span>'+
+            '<span style="color:var(--text3);margin-left:6px;font-size:10px">'+escHtml(r.homeroom||'')+'</span>'+
+          '</div>'+
+          '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">'+
+            (r.subject||r.specials?'<span class="tag blue">'+escHtml(r.subject||r.specials)+'</span>':'')+
+            (r.incident_date?'<span class="tag gray" style="font-size:9px">'+r.incident_date+'</span>':'')+
+          '</div>'+
+        '</div>';
+      }).join('');
+      drill.style.display='block';
+    }
+  });
 }
 function bCV(){
-  var conD=[{n:'Technology',a:11,p:100,l:1.9,c:45,pat:'Consistent'},{n:'PE',a:11,p:100,l:2.4,c:46,pat:'Active all year'},{n:'Art',a:11,p:100,l:3.1,c:32,pat:'Lower volume'},{n:'Music',a:4,p:36,l:6.8,c:11,pat:'Intermittent'}];
-  function pc(p){return p>=80?'var(--green)':p>=50?'var(--amber)':'var(--red)';}
-  function lc(l){return l<=2.5?'var(--green)':l<=4?'var(--amber)':'var(--red)';}
+  var rows=STATE.liveRows||[];
+  var total=rows.length;
+
+  if(!total){
+    return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
+  }
+
+  // build subject breakdown from live data
+  var subjMap={};
+  var subjWeeks={};
+  var subjChart={};
+  var subjLag=[];
+  rows.forEach(function(r){
+    var s=r.subject||r.specials||'Unknown';
+    subjMap[s]=(subjMap[s]||0)+1;
+    if(r.color_chart) subjChart[s]=(subjChart[s]||0)+1;
+    // lag: time between incident_date and created_at
+    if(r.incident_date&&r.created_at){
+      var inc=new Date(r.incident_date+'T12:00:00');
+      var cre=new Date(r.created_at);
+      var lag=(cre-inc)/(1000*3600);
+      if(lag>=0&&lag<168) subjLag.push({s:s,lag:lag});
+    }
+    // week tracking
+    if(r.incident_date){
+      var d=new Date(r.incident_date+'T12:00:00');
+      var day=d.getDay();
+      var mon=new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
+      var wk=mon.toISOString().slice(0,10);
+      if(!subjWeeks[s]) subjWeeks[s]={};
+      subjWeeks[s][wk]=1;
+    }
+  });
+
+  // get total unique weeks in dataset
+  var allWeeks={};
+  rows.forEach(function(r){
+    if(!r.incident_date) return;
+    var d=new Date(r.incident_date+'T12:00:00');
+    var day=d.getDay();
+    var mon=new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
+    allWeeks[mon.toISOString().slice(0,10)]=1;
+  });
+  var totalWks=Object.keys(allWeeks).length||1;
+
+  // avg lag per subject
+  var lagBySubj={};
+  subjLag.forEach(function(x){
+    if(!lagBySubj[x.s]) lagBySubj[x.s]={sum:0,n:0};
+    lagBySubj[x.s].sum+=x.lag;
+    lagBySubj[x.s].n++;
+  });
+
   function cc(c){return c>=60?'var(--green)':c<25?'var(--red)':'var(--amber)';}
-  return alrt('Music logged in only 4 of 11 weeks with highest submission lag (6.8h). Weaker coverage.')+
-    alrt('2nd-Pollard has 0% chart use across 5 incidents — no interventions documented.')+
-    '<div class="card" style="overflow-x:auto"><table class="ctable"><thead><tr><th>Specials</th><th>Wks</th><th>Lag</th><th>Chart</th><th>Pattern</th></tr></thead><tbody>'+
-    conD.map(function(r){return '<tr><td style="font-weight:600;color:'+(SC[r.n]||'var(--text)')+'">'+r.n+'</td>'+
-      '<td style="font-family:DM Mono,monospace">'+r.a+'/11 <span style="font-size:10px;color:'+pc(r.p)+'">'+r.p+'%</span></td>'+
-      '<td><span class="tag" style="background:'+lc(r.l)+'22;color:'+lc(r.l)+'">'+r.l+'h</span></td>'+
-      '<td><span class="tag" style="background:'+cc(r.c)+'22;color:'+cc(r.c)+'">'+r.c+'%</span></td>'+
-      '<td style="font-size:10px;font-weight:600;color:'+(r.pat==='Consistent'||r.pat==='Active all year'?'var(--green)':r.pat==='Intermittent'?'var(--red)':'var(--amber)')+'">'+r.pat+'</td></tr>';}).join('')+'</tbody></table></div>'+
-    '<div class="sec">Field completeness · 248 records</div><div class="card">'+
-    [{f:'Student name',p:100},{f:'Specials class',p:99},{f:'Behavior type',p:97},{f:'Color chart response',p:41},{f:'Home contact',p:14}].map(function(f){
-      return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+f.f+'</span><span style="font-family:DM Mono,monospace;color:'+(f.p>=90?'var(--green)':f.p>=50?'var(--amber)':'var(--red)')+'">'+f.p+'%</span></div>'+pb(f.p,f.p>=90?'var(--green)':f.p>=50?'var(--amber)':'var(--red)')+'</div>';
+  function pc(p){return p>=80?'var(--green)':p>=50?'var(--amber)':'var(--red)';}
+  function lc(l){return l<=2?'var(--green)':l<=5?'var(--amber)':'var(--red)';}
+
+  var subjects=Object.keys(subjMap).sort(function(a,b){return subjMap[b]-subjMap[a];});
+
+  var tableHtml='<div class="card" style="overflow-x:auto"><table class="ctable">'+
+    '<thead><tr>'+
+    '<th style="text-align:left">Subject</th>'+
+    '<th>Total</th>'+
+    '<th>Weeks active</th>'+
+    '<th>Avg lag</th>'+
+    '<th>Chart %</th>'+
+    '</tr></thead><tbody>'+
+    subjects.map(function(s){
+      var n=subjMap[s];
+      var wks=Object.keys(subjWeeks[s]||{}).length;
+      var wkPct=Math.round(wks/totalWks*100);
+      var lagD=lagBySubj[s];
+      var lag=lagD?parseFloat((lagD.sum/lagD.n).toFixed(1)):null;
+      var chartPct=Math.round(((subjChart[s]||0)/n)*100);
+      var color=SC[s]||'var(--text)';
+      return '<tr>'+
+        '<td style="font-weight:600;color:'+color+'">'+escHtml(s)+'</td>'+
+        '<td style="font-family:DM Mono,monospace;text-align:center">'+n+'</td>'+
+        '<td style="text-align:center"><span style="font-size:10px;color:'+pc(wkPct)+'">'+wks+'/'+totalWks+' ('+wkPct+'%)</span></td>'+
+        '<td style="text-align:center">'+(lag!==null?'<span class="tag" style="background:'+lc(lag)+'22;color:'+lc(lag)+'">'+lag+'h</span>':'<span style="color:var(--text3)">—</span>')+'</td>'+
+        '<td style="text-align:center"><span class="tag" style="background:'+cc(chartPct)+'22;color:'+cc(chartPct)+'">'+chartPct+'%</span></td>'+
+      '</tr>';
+    }).join('')+
+  '</tbody></table></div>';
+
+  // field completeness from live data
+  var hasStudent=rows.filter(function(r){return r.student&&r.student.trim();}).length;
+  var hasSubject=rows.filter(function(r){return r.subject||r.specials;}).length;
+  var hasBehavior=rows.filter(function(r){return r.behaviors&&r.behaviors.length;}).length;
+  var hasChart=rows.filter(function(r){return r.color_chart;}).length;
+  var hasHome=rows.filter(function(r){return r.home_contact;}).length;
+  var hasTime=rows.filter(function(r){return r.incident_time;}).length;
+
+  var fields=[
+    {f:'Student name',n:hasStudent},
+    {f:'Subject',n:hasSubject},
+    {f:'Behavior type',n:hasBehavior},
+    {f:'Time logged',n:hasTime},
+    {f:'Color chart response',n:hasChart},
+    {f:'Home contact',n:hasHome}
+  ];
+
+  var completenessHtml='<div class="sec">Field completeness · '+total+' records</div><div class="card">'+
+    fields.map(function(f){
+      var p=Math.round(f.n/total*100);
+      var c=p>=90?'var(--green)':p>=50?'var(--amber)':'var(--red)';
+      return '<div style="margin-bottom:10px">'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">'+
+        '<span>'+f.f+'</span>'+
+        '<span style="font-family:DM Mono,monospace;color:'+c+'">'+p+'%</span>'+
+        '</div>'+pb(p,c)+'</div>';
     }).join('')+'</div>';
+
+  return '<div class="sec">By subject · '+total+' total incidents</div>'+
+    tableHtml+completenessHtml;
 }
 function bST(live){
   var LD=live||{};
@@ -1191,7 +1427,7 @@ function renderIncidentList(rows, container, onAfterEdit){
       var row=null;for(var i=0;i<rows.length;i++){if(String(rows[i].id)===String(dbId)){row=rows[i];break;}}
       if(!row)return;
       // convert DB row to log-like object
-      var logObj={dbId:row.id,studentName:row.student,homeroom:row.homeroom,specials:row.specials,
+      var logObj={dbId:row.id,studentName:row.student,homeroom:row.homeroom,specials:row.subject||row.specials,subject:row.subject||row.specials,
         behaviors:row.behaviors||[],date:row.incident_date,time:row.incident_time,
         colorChart:row.color_chart,homeContact:row.home_contact,notes:row.notes||'',fromDb:true};
       // open edit sheet using existing openEditSheet logic
@@ -1224,7 +1460,7 @@ function openDet(id,live){
 
   if(isZero){
     el('det-body').innerHTML=
-      '<div class="empty" style="padding-top:36px"><div class="empty-ico">📭</div>'+
+      '<div class="empty" style="padding-top:36px">'+
       '<div class="empty-t">No incidents logged</div>'+
       '<div class="empty-s">No specials incidents were recorded for this classroom during Jan 21 – Apr 1, 2026.<br><br>This may reflect genuinely smooth sessions, inconsistent logging, or limited specials overlap. It is not confirmation of no issues.</div></div>'+
       '<div style="height:16px"></div>';
@@ -1390,7 +1626,7 @@ el('T-overlay').addEventListener('click',closeSheet);
 el('btn-log-another').addEventListener('click',closeSheet);
 el('btn-a-log').addEventListener('click',goTeacher);
 el('btn-export') && el('btn-export').addEventListener('click',exportCSV);
-el('AN-classes').addEventListener('click',function(){STATE.clsFilter='all';showScreen('S-classes');renderClsExplorer(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);});
+el('AN-classes').addEventListener('click',function(){ if(SESSION.role!=='admin') return; STATE.clsFilter='all';showScreen('S-classes');renderClsExplorer(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);});
 el('AN-log').addEventListener('click',goTeacher);
 el('btn-cls-back').addEventListener('click',function(){showScreen('S-admin',true);});
 el('btn-det-back').addEventListener('click',function(){showScreen('S-classes',true);var live=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;renderClsExplorer(live);});
@@ -1448,7 +1684,7 @@ el('es-save').addEventListener('click',function(){
     closeEditSheet();
     STATE.myDbLogs=STATE.myDbLogs.map(function(row){
       if(String(row.id)===String(EDIT_STATE.dbId)){
-        return Object.assign({},row,{student:updates.student,homeroom:updates.homeroom,specials:updates.specials,behaviors:updates.behaviors,incident_date:updates.incident_date,incident_time:updates.incident_time,color_chart:updates.color_chart,home_contact:updates.home_contact,notes:updates.notes});
+        return Object.assign({},row,{student:updates.student,homeroom:updates.homeroom,specials:updates.specials,subject:updates.specials,behaviors:updates.behaviors,incident_date:updates.incident_date,incident_time:updates.incident_time,color_chart:updates.color_chart,home_contact:updates.home_contact,notes:updates.notes});
       }
       return row;
     });
@@ -1600,6 +1836,21 @@ if (setupSubmitBtn) {
 // ── SERVICE WORKER ──
 // Service worker requires a deployed URL — skipped in single-file mode.
 // Offline support is available when deployed via Netlify/Vercel (add a sw.js file).
+
+
+
+function initPasswordSetup(token){
+  fetch(SB_URL + '/auth/v1/user', {
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token}
+  }).then(function(r){ return r.json(); })
+  .then(function(user){
+    SESSION.token = token;
+    SESSION.email = user.email;
+    history.replaceState(null,'',window.location.pathname);
+    showScreen('S-setup');
+  })
+  .catch(function(){ showScreen('S-login'); });
+}
 
 // ── INIT ──
 var inviteToken = checkInviteToken();
