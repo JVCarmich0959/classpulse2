@@ -223,6 +223,33 @@ function nowStr(){var d=new Date();return d.toTimeString().slice(0,5);}
 function freshEntry(){return{studentName:'',homeroom:'',specials:'',behaviors:[],date:todayStr(),time:nowStr(),colorChart:false,homeContact:false,notes:''};}
 function el(id){return document.getElementById(id);}
 function pb(pct,col){return '<div class="pbar"><div style="--pw:'+Math.min(pct,100)+'%;background:'+col+'" class="pfill"></div></div>';}
+var INSTALL_PROMPT_EVENT=null;
+function initPwa(){
+  if('serviceWorker' in navigator){
+    window.addEventListener('load',function(){
+      navigator.serviceWorker.register('/sw.js').catch(function(){});
+    });
+  }
+  var btn=el('btn-install-app');
+  if(!btn) return;
+  window.addEventListener('beforeinstallprompt',function(e){
+    e.preventDefault();
+    INSTALL_PROMPT_EVENT=e;
+    btn.style.display='inline-flex';
+  });
+  window.addEventListener('appinstalled',function(){
+    INSTALL_PROMPT_EVENT=null;
+    btn.style.display='none';
+  });
+  btn.addEventListener('click',function(){
+    if(!INSTALL_PROMPT_EVENT) return;
+    INSTALL_PROMPT_EVENT.prompt();
+    INSTALL_PROMPT_EVENT.userChoice.then(function(){
+      INSTALL_PROMPT_EVENT=null;
+      btn.style.display='none';
+    });
+  });
+}
 
 function startEegAnimation(){
   var svg=document.getElementById('eeg-loading-svg');
@@ -1931,6 +1958,7 @@ el('setup-submit').addEventListener('click', function(){
   });
 });
 
+initPwa();
 initFreshness();
 
 export {
