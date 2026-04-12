@@ -46,28 +46,24 @@
 <div id="S-setup" class="screen hidden">
   <div class="st"></div>
   <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:32px 24px">
-    <div style="font-family:DM Mono,monospace;font-size:26px;color:var(--accent);letter-spacing:.06em;font-weight:700;line-height:1;margin-bottom:0">CLASSPULSE</div>
-    <div style="margin:8px 0 6px;height:28px;max-width:320px">
-      <svg width="100%" height="28" viewBox="0 0 320 28" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-        <line x1="0" y1="14" x2="60" y2="14" stroke="#00e6c8" stroke-width="1.5" opacity="0.25" stroke-linecap="round"/>
-        <polyline points="60,14 90,14 108,14 120,3 132,25 142,8 150,19 162,14 200,14" fill="none" stroke="#00e6c8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <line x1="200" y1="14" x2="320" y2="14" stroke="#00e6c8" stroke-width="1.5" opacity="0.25" stroke-linecap="round"/>
-        <circle cx="120" cy="3" r="3" fill="#00e6c8"/>
-        <circle cx="120" cy="3" r="6" fill="none" stroke="#00e6c8" stroke-width="1" opacity="0.4"/>
-        <circle cx="132" cy="25" r="3" fill="#ff4466"/>
-        <circle cx="132" cy="25" r="6" fill="none" stroke="#ff4466" stroke-width="1" opacity="0.4"/>
-      </svg>
-    </div>
-    <div style="font-family:DM Mono,monospace;font-size:11px;color:#5cb8a0;letter-spacing:.08em;margin-bottom:32px">Activate your account</div>
+    <div style="font-family:DM Mono,monospace;font-size:10px;color:var(--text3);letter-spacing:.18em;margin-bottom:12px">// WAYNE STEM ACADEMY //</div>
+    <div style="font-family:DM Mono,monospace;font-size:24px;color:var(--accent);letter-spacing:.06em;margin-bottom:4px">CLASSPULSE</div>
+    <div style="font-family:DM Mono,monospace;font-size:11px;color:var(--text2);letter-spacing:.08em;margin-bottom:32px">Set your password to continue</div>
+
     <div style="margin-bottom:16px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:6px">New password</div>
-      <input type="password" id="setup-pass" placeholder="············" autocomplete="new-password" style="width:100%;background:var(--card);border:1px solid rgba(0,230,200,.25);border-radius:2px;padding:14px;font-size:15px;color:var(--text);font-family:DM Mono,monospace;outline:none;box-sizing:border-box"/>
+      <input type="password" id="setup-pass" placeholder="············" autocomplete="new-password"
+        style="width:100%;background:var(--card);border:1px solid rgba(0,230,200,.25);border-radius:2px;padding:14px;font-size:15px;color:var(--text);font-family:DM Mono,monospace;outline:none;box-sizing:border-box"/>
     </div>
+
     <div style="margin-bottom:24px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:6px">Confirm password</div>
-      <input type="password" id="setup-confirm" placeholder="············" autocomplete="new-password" style="width:100%;background:var(--card);border:1px solid rgba(0,230,200,.25);border-radius:2px;padding:14px;font-size:15px;color:var(--text);font-family:DM Mono,monospace;outline:none;box-sizing:border-box"/>
+      <input type="password" id="setup-confirm" placeholder="············" autocomplete="new-password"
+        style="width:100%;background:var(--card);border:1px solid rgba(0,230,200,.25);border-radius:2px;padding:14px;font-size:15px;color:var(--text);font-family:DM Mono,monospace;outline:none;box-sizing:border-box"/>
     </div>
+
     <div id="setup-error" style="font-size:12px;color:var(--red);margin-bottom:12px;font-family:DM Mono,monospace;min-height:16px"></div>
+
     <button id="setup-submit" class="btn-ok">[ Activate account ]</button>
   </div>
 </div>

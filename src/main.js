@@ -1,4 +1,6 @@
 import { SB_URL, SB_KEY } from './config.js';
+import { checkInviteToken } from './auth/session.js';
+import { initPasswordSetup } from './views/login.js';
 import { openStudent, wireStudentLinks, stuNameLink } from './views/admin/student.js';
 
 'use strict';
@@ -1393,6 +1395,77 @@ el('del-go-btn').addEventListener('click',function(){
 });
 
 
+var setupSubmitBtn = el('setup-submit');
+if (setupSubmitBtn) {
+  setupSubmitBtn.addEventListener('click', async function () {
+    var btn = this;
+    var errEl = el('setup-error');
+    var passEl = el('setup-pass');
+    var confirmEl = el('setup-confirm');
+    var pass = passEl ? passEl.value : '';
+    var confirm = confirmEl ? confirmEl.value : '';
+
+    if (errEl) errEl.textContent = '';
+
+    if (pass.length < 8) {
+      if (errEl) errEl.textContent = 'Password must be at least 8 characters';
+      return;
+    }
+    if (pass !== confirm) {
+      if (errEl) errEl.textContent = 'Passwords do not match';
+      return;
+    }
+
+    btn.textContent = '[ Activating… ]';
+    btn.disabled = true;
+
+    try {
+      var res = await fetch(SB_URL + '/auth/v1/user', {
+        method: 'PUT',
+        headers: {
+          apikey: SB_KEY,
+          Authorization: 'Bearer ' + SESSION.token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ password: pass })
+      });
+
+      if (!res.ok) throw new Error('Failed to set password');
+
+      var signIn = await fetch(SB_URL + '/auth/v1/token?grant_type=password', {
+        method: 'POST',
+        headers: {
+          apikey: SB_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email: SESSION.email, password: pass })
+      });
+
+      var data = await signIn.json();
+      if (!data.access_token) throw new Error('Sign in failed after setup');
+
+      saveSession(data.access_token, data.user && data.user.email ? data.user.email : SESSION.email, data.user && data.user.id, data.refresh_token);
+      SESSION.token = data.access_token;
+      SESSION.email = data.user && data.user.email ? data.user.email : SESSION.email;
+      SESSION.userId = data.user && data.user.id ? data.user.id : SESSION.userId;
+
+      fetchRole(SESSION.userId, function (err, role) {
+        SESSION.role = role;
+        if (role === 'admin') {
+          goAdmin();
+        } else {
+          goTeacher();
+        }
+      });
+    } catch (err) {
+      if (errEl) errEl.textContent = err.message || 'Something went wrong';
+      btn.textContent = '[ Activate account ]';
+      btn.disabled = false;
+    }
+  });
+}
+
+
 // ── SERVICE WORKER ──
 // Service worker requires a deployed URL — skipped in single-file mode.
 // Offline support is available when deployed via Netlify/Vercel (add a sw.js file).
@@ -1428,49 +1501,20 @@ function initPasswordSetup(token){
 }
 
 // ── INIT ──
-var _inviteToken = checkInviteToken();
-if(_inviteToken){
-  initPasswordSetup(_inviteToken);
+var inviteToken = checkInviteToken();
+if (inviteToken) {
+  initPasswordSetup(inviteToken).then(function (user) {
+    SESSION.token = inviteToken;
+    SESSION.email = user && user.email ? user.email : null;
+    showScreen('S-setup');
+    history.replaceState(null, '', window.location.pathname);
+  }).catch(function () {
+    showScreen('S-login');
+    initLogin();
+  });
 } else {
   initLogin();
 }
-
-// ── SETUP FORM ──
-el('setup-submit').addEventListener('click', function(){
-  var btn = el('setup-submit');
-  var errEl = el('setup-error');
-  var pass = el('setup-pass').value;
-  var confirm = el('setup-confirm').value;
-  errEl.textContent = '';
-  if(pass.length < 8){errEl.textContent='Password must be at least 8 characters';return;}
-  if(pass !== confirm){errEl.textContent='Passwords do not match';return;}
-  btn.textContent='[ Activating… ]'; btn.disabled=true;
-  fetch(SB_URL+'/auth/v1/user',{
-    method:'PUT',
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token,'Content-Type':'application/json'},
-    body:JSON.stringify({password:pass})
-  }).then(function(r){
-    if(!r.ok) throw new Error('Failed to set password');
-    return fetch(SB_URL+'/auth/v1/token?grant_type=password',{
-      method:'POST',
-      headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
-      body:JSON.stringify({email:SESSION.email,password:pass})
-    });
-  }).then(function(r){ return r.json(); })
-  .then(function(data){
-    if(!data.access_token) throw new Error('Sign in failed');
-    saveSession(data);
-    SESSION.token = data.access_token;
-    SESSION.email = data.user.email;
-    fetchRole(data.user.id, function(err, role){
-      if(role==='admin') goAdmin(); else goTeacher();
-    });
-  }).catch(function(err){
-    errEl.textContent = err.message||'Something went wrong';
-    btn.textContent='[ Activate account ]'; btn.disabled=false;
-  });
-});
-
 initFreshness();
 
 export {
