@@ -149,7 +149,17 @@ var BAND_LABELS = {
 };
 
 var BEHAVIORS=['Verbal disruption','Noncompliance','Off-task','Emotional distress','Peer conflict','Physical behavior','Out of seat','Device misuse'];
-var SPECIALS=['PE','Technology','Art','Music']; // fallback only — use getSpecials()
+var SUBJECTS_SPECIALS=['PE','Technology','Art','Music'];
+var SUBJECTS_HOMEROOM=['Block 1','Block 2','Block 3','Lunch','Block 4','Block 5','Block 6','Reading','Math','Science','Small Group','Other'];
+var SUBJECTS_IA=['PE','Technology','Art','Music','Block 1','Block 2','Block 3','Lunch','Block 4','Block 5','Block 6','Reading','Math','Science','Small Group','Other'];
+var SUBJECTS=['PE','Technology','Art','Music'];
+function getSubjects(){
+  var r=SESSION&&SESSION.role?SESSION.role:'specials';
+  if(r==='homeroom') return SUBJECTS_HOMEROOM;
+  if(r==='ia') return SUBJECTS_IA;
+  if(r==='admin') return SUBJECTS_IA;
+  return SUBJECTS_SPECIALS;
+}
 var HOMEROOMS=ALL_CLASSES;
 var SER=['#00e6c8','#f0c040','#ff4466','#a78bfa','#34d399','#f97316','#60a5fa','#4d6490'];
 var SC={'PE':'#00e6c8','Technology':'#a78bfa','Art':'#f0c040','Music':'#ff4466','P.E.':'#00e6c8'};
@@ -319,7 +329,7 @@ function renderStep(){
 }
 function bS1(){
   var opts=HOMEROOMS.map(function(h){return '<option value="'+h+'"'+(STATE.entry.homeroom===h?' selected':'')+'>'+h+'</option>';}).join('');
-  var chips=getSpecials().map(function(s){return '<button type="button" class="chip'+(STATE.entry.specials===s?' on':'')+'" data-sp="'+s+'">'+s+'</button>';}).join('');
+  var chips=getSubjects().map(function(s){return '<button type="button" class="chip'+(STATE.entry.specials===s?' on':'')+'" data-sp="'+s+'">'+s+'</button>';}).join('');
   return '<div style="padding:2px 0 14px"><h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Who is this about?</h3>'+
     '<div class="fg"><label class="fl">Student name <span class="req">*</span></label><input type="text" id="f-name" placeholder="First Last" value="'+STATE.entry.studentName+'" autocomplete="off"></div>'+
     '<div class="fg"><label class="fl">Homeroom class <span class="req">*</span></label><select id="f-hr"><option value="">Select homeroom...</option>'+opts+'</select></div>'+
@@ -610,7 +620,7 @@ function populateEditSheet(l){
   if(spLabel) spLabel.textContent=SESSION.role==='homeroom'?'Subject / context':'Subject';
   if(spSel) spSel.value=curSubj;
   if(spChips){
-    spChips.innerHTML=getSpecials().map(function(s){
+    spChips.innerHTML=getSubjects().map(function(s){
       return '<button type="button" class="chip'+(s===curSubj?' on':'')+'" data-es="'+s+'">'+s+'</button>';
     }).join('');
     spChips.querySelectorAll('[data-es]').forEach(function(btn){
