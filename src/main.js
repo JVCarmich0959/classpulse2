@@ -622,7 +622,7 @@ function renderHistory(){
         var hasNotes=l.notes&&l.notes.trim().length>0;
         return '<div class="log-item" data-uid="'+uid+'" style="'+(isDb?'border-color:rgba(0,230,200,.1)':'')+'">'+
           '<div class="log-hdr" data-toggle="'+uid+'">'+
-            '<div class="log-name">'+stuNameLink(l.studentName)+
+            '<div class="log-name">'+stuNameLink(l.studentName)+(l.submittedBy&&l.submittedBy!==SESSION.email?'<span style="font-size:9px;color:var(--text3);font-family:DM Mono,monospace;margin-left:4px">'+emailToDisplayName(l.submittedBy)+'</span>':'')+
               '<span class="log-chevron" id="chev-'+uid+'">▾</span>'+
             '</div>'+
             '<div class="log-time">'+(isDb?'<span style="color:var(--text3);margin-right:4px;font-size:9px">db</span>':'')+l.time+'</div>'+
