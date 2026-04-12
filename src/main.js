@@ -323,7 +323,7 @@ function bS1(){
   return '<div style="padding:2px 0 14px"><h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Who is this about?</h3>'+
     '<div class="fg"><label class="fl">Student name <span class="req">*</span></label><input type="text" id="f-name" placeholder="First Last" value="'+STATE.entry.studentName+'" autocomplete="off"></div>'+
     '<div class="fg"><label class="fl">Homeroom class <span class="req">*</span></label><select id="f-hr"><option value="">Select homeroom...</option>'+opts+'</select></div>'+
-    '<div class="fg"><label class="fl">Your specials class <span class="req">*</span></label><div class="chips" id="sp-chips">'+chips+'</div></div>'+
+    '<div class="fg"><label class="fl">'+(SESSION.role==="homeroom"||SESSION.role==="ia"?"Subject / context":"Your class")+' <span class="req">*</span></label><div class="chips" id="sp-chips">'+chips+'</div></div>'+
     '<button type="button" class="btn-p" id="s1-next">Next →</button></div>';
 }
 function bS2(){
