@@ -35,7 +35,7 @@ function fetchRole(userId, cb){
     headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok}
   }).then(function(r){ return r.json(); })
     .then(function(rows){
-      var role = (rows && rows[0] && rows[0].role) || 'teacher';
+      var role = (rows && rows[0] && rows[0].role) || 'specials';
       if(cb) cb(null, role);
     })
     .catch(function(err){ if(cb) cb(err, 'teacher'); });
@@ -527,89 +527,77 @@ function renderHistory(){
   }
   var chartCount=allLogs.filter(function(l){return l.colorChart||l.color_chart;}).length;
   var homeCount=allLogs.filter(function(l){return l.homeContact||l.home_contact;}).length;
-  var byWeek = {};
+  var chartPct=allLogs.length?Math.round(chartCount/allLogs.length*100):0;
+  var homePct=allLogs.length?Math.round(homeCount/allLogs.length*100):0;
+
+  var stuMap={};
+  allLogs.forEach(function(l){var n=l.studentName||'Unknown';stuMap[n]=(stuMap[n]||0)+1;});
+  var topStus=Object.keys(stuMap).map(function(k){return{name:k,n:stuMap[k]};}).sort(function(a,b){return b.n-a.n;}).slice(0,5);
+  var maxStu=topStus.length?topStus[0].n:1;
+
+  var behMap={};
+  allLogs.forEach(function(l){(l.behaviors||[]).forEach(function(b){behMap[b]=(behMap[b]||0)+1;});});
+  var topBehs=Object.keys(behMap).map(function(k){return{name:k,n:behMap[k]};}).sort(function(a,b){return b.n-a.n;}).slice(0,5);
+  var maxBeh=topBehs.length?topBehs[0].n:1;
+
+  var weekMap={};
   allLogs.forEach(function(l){
     if(!l.date) return;
-    var dt = new Date(l.date+'T12:00:00');
-    if(isNaN(dt.getTime())) return;
-    var dow = dt.getDay();
-    var diff = dow===0 ? -6 : 1-dow;
-    var monday = new Date(dt);
-    monday.setDate(dt.getDate()+diff);
-    var key = monday.toISOString().slice(0,10);
-    byWeek[key] = (byWeek[key] || 0) + 1;
+    var d=new Date(l.date+'T12:00:00');
+    var day=d.getDay();
+    var mon=new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
+    var wk=mon.toISOString().slice(0,10);
+    weekMap[wk]=(weekMap[wk]||0)+1;
   });
-  var weekKeys = Object.keys(byWeek).sort().slice(-6);
-  var weekMax = 1;
-  weekKeys.forEach(function(k){ if(byWeek[k] > weekMax) weekMax = byWeek[k]; });
-  var weeklyHtml = '<div class="card" style="margin-top:10px"><div style="font-size:11px;color:var(--text2);margin-bottom:8px">Weekly trend</div>'+
-    (weekKeys.length ? '<div style="display:flex;gap:8px;align-items:flex-end;height:80px">'+weekKeys.map(function(k){
-      var h = Math.max(8, Math.round((byWeek[k]/weekMax)*64));
-      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px"><div style="width:100%;background:rgba(0,230,200,.2);border:1px solid rgba(0,230,200,.35);height:'+h+'px;border-radius:6px 6px 2px 2px"></div><div style="font-size:9px;color:var(--text3);font-family:DM Mono,monospace">'+k.slice(5)+'</div></div>';
-    }).join('')+'</div>' : '<div style="font-size:10px;color:var(--text3);font-family:DM Mono,monospace">Not enough date data.</div>')+
-  '</div>';
-  var stuCounts = {};
-  allLogs.forEach(function(l){
-    var n = (l.studentName || '').trim();
-    if(!n) return;
-    stuCounts[n] = (stuCounts[n] || 0) + 1;
-  });
-  var topStudents = Object.keys(stuCounts).sort(function(a,b){ return stuCounts[b]-stuCounts[a]; }).slice(0,5);
-  var topMax = 1;
-  topStudents.forEach(function(n){ if(stuCounts[n] > topMax) topMax = stuCounts[n]; });
-  var topStudentsHtml = '<div class="card" style="margin-top:10px"><div style="font-size:11px;color:var(--text2);margin-bottom:8px">Top students</div>'+
-    (topStudents.length ? topStudents.map(function(n){
-      return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px"><span>'+stuNameLink(n)+'</span><span style="color:var(--text2)">'+stuCounts[n]+'</span></div><div style="height:7px;background:rgba(0,230,200,.08);border-radius:999px;overflow:hidden"><div style="height:100%;width:'+Math.round((stuCounts[n]/topMax)*100)+'%;background:linear-gradient(90deg,var(--accent),#ff4466)"></div></div></div>';
-    }).join('') : '<div style="font-size:10px;color:var(--text3);font-family:DM Mono,monospace">No student data.</div>')+
-  '</div>';
-  var heatGrid = [];
-  var validTimeRows = 0;
-  for(var hr=0;hr<8;hr++){ heatGrid[hr]=[0,0,0,0,0]; }
-  allLogs.forEach(function(l){
-    if(!l.date || !l.time) return;
-    var d = new Date(l.date + 'T12:00:00');
-    var dow = d.getDay();
-    if(dow === 0 || dow === 6) return;
-    var hour = parseInt((l.time||'00:00').split(':')[0], 10);
-    if(hour < 8 || hour > 15) return;
-    var rowIdx = hour - 8;
-    var colIdx = dow - 1;
-    if(rowIdx < 0 || rowIdx > 7 || colIdx < 0 || colIdx > 4) return;
-    heatGrid[rowIdx][colIdx]++;
-    validTimeRows++;
-  });
-  var heatHtml = '';
-  if(validTimeRows >= 3){
-    var maxCell = 0;
-    heatGrid.forEach(function(row){ row.forEach(function(v){ if(v > maxCell) maxCell = v; }); });
-    var days = ['Mon','Tue','Wed','Thu','Fri'];
-    var slots = ['8-9a','9-10a','10-11a','11-12p','12-1p','1-2p','2-3p','3-4p'];
-    var grid = '';
-    for(var rIdx=0;rIdx<8;rIdx++){
-      for(var cIdx=0;cIdx<5;cIdx++){
-        var count = heatGrid[rIdx][cIdx];
-        var ratio = maxCell ? (count/maxCell) : 0;
-        var rr = Math.round(0 + ((255-0) * ratio));
-        var gg = Math.round(230 + ((68-230) * ratio));
-        var bb = Math.round(200 + ((102-200) * ratio));
-        var alpha = ratio;
-        grid += '<div title="'+slots[rIdx]+' '+days[cIdx]+': '+count+'" style="height:22px;border-radius:6px;border:1px solid rgba(255,255,255,.06);background:rgba('+rr+','+gg+','+bb+','+alpha+');"></div>';
-      }
-    }
-    heatHtml = '<div class="card" style="margin-top:10px">'+
-      '<div style="font-size:11px;color:var(--text2);margin-bottom:8px">When it happens</div>'+
-      '<div style="display:grid;grid-template-columns:64px 1fr;gap:8px;align-items:start">'+
-        '<div style="display:grid;grid-template-rows:repeat(8, 22px);gap:4px">'+slots.map(function(s){return '<div style="font-size:9px;color:var(--text3);font-family:DM Mono,monospace;display:flex;align-items:center">'+s+'</div>';}).join('')+'</div>'+
-        '<div><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:6px">'+days.map(function(dn){return '<div style="text-align:center;font-size:9px;color:var(--text3);font-family:DM Mono,monospace">'+dn+'</div>';}).join('')+'</div><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px">'+grid+'</div></div>'+
-      '</div>'+
-    '</div>';
+  var wkKeys=Object.keys(weekMap).sort().slice(-8);
+  var wkVals=wkKeys.map(function(k){return weekMap[k];});
+  var maxWk=Math.max.apply(null,wkVals)||1;
+  var wkW=280,wkH=44,pts=wkVals.map(function(v,i){
+    var x=wkVals.length<2?wkW/2:(i/(wkVals.length-1))*(wkW-20)+10;
+    var y=wkH-4-((v/maxWk)*(wkH-12));
+    return x+','+y;
+  }).join(' ');
+
+  function barRow(name,n,max,color){
+    var pct=Math.round((n/max)*100);
+    return '<div style="margin-bottom:7px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px">'+
+      '<span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%">'+escHtml(name)+'</span>'+
+      '<span style="font-family:DM Mono,monospace;color:'+color+'">'+n+'</span></div>'+
+      '<div style="height:3px;background:var(--bg3);border-radius:2px">'+
+      '<div style="height:3px;width:'+pct+'%;background:'+color+';border-radius:2px"></div>'+
+      '</div></div>';
   }
-  var summ='<div class="sess-strip">'+
-    '<div class="ss-item"><div class="ss-val" style="color:var(--text)">'+STATE.logs.length+'</div><div class="ss-lbl">This session</div></div>'+
-    '<div class="ss-item"><div class="ss-val" style="color:var(--accent)">'+allLogs.length+'</div><div class="ss-lbl">Total yours</div></div>'+
-    '<div class="ss-item"><div class="ss-val" style="color:var(--green)">'+chartCount+'</div><div class="ss-lbl">Chart used</div></div>'+
-    '<div class="ss-item"><div class="ss-val" style="color:var(--amber)">'+homeCount+'</div><div class="ss-lbl">Home contact</div></div>'+
-    '</div>'+weeklyHtml+heatHtml+topStudentsHtml;
+
+  var summ=
+    '<div class="sess-strip" style="margin-bottom:12px">'+
+      '<div class="ss-item"><div class="ss-val" style="color:var(--text)">'+allLogs.length+'</div><div class="ss-lbl">Total logged</div></div>'+
+      '<div class="ss-item"><div class="ss-val" style="color:var(--accent)">'+chartPct+'%</div><div class="ss-lbl">Chart used</div></div>'+
+      '<div class="ss-item"><div class="ss-val" style="color:var(--amber)">'+homePct+'%</div><div class="ss-lbl">Home contact</div></div>'+
+    '</div>'+
+    (wkVals.length>1?
+      '<div class="sec">Weekly trend</div>'+
+      '<div class="card" style="margin-bottom:10px;padding:10px 12px">'+
+        '<svg width="100%" height="'+wkH+'px" viewBox="0 0 '+wkW+' '+wkH+'" preserveAspectRatio="xMidYMid meet" style="display:block">'+
+          '<polyline points="'+pts+'" fill="none" stroke="#00e6c8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
+        '</svg>'+
+        '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);font-family:DM Mono,monospace;margin-top:4px">'+
+          '<span>'+(wkKeys[0]||'')+'</span><span>'+(wkKeys[wkKeys.length-1]||'')+'</span>'+
+        '</div>'+
+      '</div>'
+    :'')+
+    (topStus.length?
+      '<div class="sec">Your students</div>'+
+      '<div class="card" style="margin-bottom:10px">'+
+        topStus.map(function(s){return barRow(s.name,s.n,maxStu,'var(--accent)');}).join('')+
+      '</div>'
+    :'')+
+    (topBehs.length?
+      '<div class="sec">Behavior types</div>'+
+      '<div class="card" style="margin-bottom:10px">'+
+        topBehs.map(function(b){return barRow(b.name,b.n,maxBeh,'var(--amber)');}).join('')+
+      '</div>'
+    :'');
   var grouped={};
   allLogs.forEach(function(l,idx){
     var k=l.date||'Unknown date';
@@ -1352,17 +1340,15 @@ el('btn-t-signout') && el('btn-t-signout').addEventListener('click',signOut);
 el('btn-h-signout') && el('btn-h-signout').addEventListener('click',signOut);
 el('btn-th-signout') && el('btn-th-signout').addEventListener('click',signOut);
 el('btn-a-signout') && el('btn-a-signout').addEventListener('click',signOut);
-el('btn-t-switch') && el('btn-t-switch').addEventListener('click',goAdmin);
-el('btn-h-switch') && el('btn-h-switch').addEventListener('click',goAdmin);
-el('btn-th-switch') && el('btn-th-switch').addEventListener('click',goAdmin);
-el('TN-home') && el('TN-home').addEventListener('click',function(){showPane('home');});
+el('btn-t-switch').addEventListener('click',function(){ if(SESSION.role==='admin') goAdmin(); });
+el('btn-th-switch').addEventListener('click',function(){ if(SESSION.role==='admin') goAdmin(); });
 el('TN-log').addEventListener('click',function(){showPane('log');});
 el('TN-hist').addEventListener('click',function(){showPane('hist');});
 el('T-overlay').addEventListener('click',closeSheet);
 el('btn-log-another').addEventListener('click',closeSheet);
 el('btn-a-log').addEventListener('click',goTeacher);
 el('btn-export') && el('btn-export').addEventListener('click',exportCSV);
-el('AN-classes').addEventListener('click',function(){STATE.clsFilter='all';showScreen('S-classes');renderClsExplorer(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);});
+el('AN-classes').addEventListener('click',function(){ if(SESSION.role!=='admin') return; STATE.clsFilter='all';showScreen('S-classes');renderClsExplorer(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);});
 el('AN-log').addEventListener('click',goTeacher);
 el('btn-cls-back').addEventListener('click',function(){showScreen('S-admin',true);});
 el('btn-det-back').addEventListener('click',function(){showScreen('S-classes',true);var live=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;renderClsExplorer(live);});
@@ -1573,21 +1559,80 @@ if (setupSubmitBtn) {
 // Service worker requires a deployed URL — skipped in single-file mode.
 // Offline support is available when deployed via Netlify/Vercel (add a sw.js file).
 
-// ── INIT ──
-var inviteToken = checkInviteToken();
-if (inviteToken) {
-  initPasswordSetup(inviteToken).then(function (user) {
-    SESSION.token = inviteToken;
-    SESSION.email = user && user.email ? user.email : null;
+
+// ── INVITE TOKEN HANDLER ──
+function checkInviteToken(){
+  var hash = window.location.hash;
+  if(!hash) return null;
+  var params = new URLSearchParams(hash.replace('#','?'));
+  var type = params.get('type');
+  var token = params.get('access_token');
+  if((type === 'invite' || type === 'recovery') && token) return token;
+  // Also check query string (Supabase PKCE flow)
+  var qp = new URLSearchParams(window.location.search);
+  var qtype = qp.get('type');
+  var qtoken = qp.get('access_token');
+  if((qtype === 'invite' || qtype === 'recovery') && qtoken) return qtoken;
+  return null;
+}
+
+function initPasswordSetup(token){
+  fetch(SB_URL + '/auth/v1/user', {
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token}
+  }).then(function(r){ return r.json(); })
+  .then(function(user){
+    SESSION.token = token;
+    SESSION.email = user.email;
+    history.replaceState(null,'',window.location.pathname);
     showScreen('S-setup');
-    history.replaceState(null, '', window.location.pathname);
-  }).catch(function () {
-    showScreen('S-login');
-    initLogin();
-  });
+  })
+  .catch(function(){ showScreen('S-login'); });
+}
+
+// ── INIT ──
+var _inviteToken = checkInviteToken();
+if(_inviteToken){
+  initPasswordSetup(_inviteToken);
 } else {
   initLogin();
 }
+
+// ── SETUP FORM ──
+el('setup-submit').addEventListener('click', function(){
+  var btn = el('setup-submit');
+  var errEl = el('setup-error');
+  var pass = el('setup-pass').value;
+  var confirm = el('setup-confirm').value;
+  errEl.textContent = '';
+  if(pass.length < 8){errEl.textContent='Password must be at least 8 characters';return;}
+  if(pass !== confirm){errEl.textContent='Passwords do not match';return;}
+  btn.textContent='[ Activating… ]'; btn.disabled=true;
+  fetch(SB_URL+'/auth/v1/user',{
+    method:'PUT',
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token,'Content-Type':'application/json'},
+    body:JSON.stringify({password:pass})
+  }).then(function(r){
+    if(!r.ok) throw new Error('Failed to set password');
+    return fetch(SB_URL+'/auth/v1/token?grant_type=password',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({email:SESSION.email,password:pass})
+    });
+  }).then(function(r){ return r.json(); })
+  .then(function(data){
+    if(!data.access_token) throw new Error('Sign in failed');
+    saveSession(data);
+    SESSION.token = data.access_token;
+    SESSION.email = data.user.email;
+    fetchRole(data.user.id, function(err, role){
+      if(role==='admin') goAdmin(); else goTeacher();
+    });
+  }).catch(function(err){
+    errEl.textContent = err.message||'Something went wrong';
+    btn.textContent='[ Activate account ]'; btn.disabled=false;
+  });
+});
+
 initFreshness();
 
 export {
