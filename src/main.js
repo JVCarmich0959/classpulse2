@@ -319,7 +319,7 @@ function renderStep(){
 }
 function bS1(){
   var opts=HOMEROOMS.map(function(h){return '<option value="'+h+'"'+(STATE.entry.homeroom===h?' selected':'')+'>'+h+'</option>';}).join('');
-  var chips=SPECIALS.map(function(s){return '<button type="button" class="chip'+(STATE.entry.specials===s?' on':'')+'" data-sp="'+s+'">'+s+'</button>';}).join('');
+  var chips=getSpecials().map(function(s){return '<button type="button" class="chip'+(STATE.entry.specials===s?' on':'')+'" data-sp="'+s+'">'+s+'</button>';}).join('');
   return '<div style="padding:2px 0 14px"><h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Who is this about?</h3>'+
     '<div class="fg"><label class="fl">Student name <span class="req">*</span></label><input type="text" id="f-name" placeholder="First Last" value="'+STATE.entry.studentName+'" autocomplete="off"></div>'+
     '<div class="fg"><label class="fl">Homeroom class <span class="req">*</span></label><select id="f-hr"><option value="">Select homeroom...</option>'+opts+'</select></div>'+
@@ -820,8 +820,13 @@ function bOV(live){
     '<div class="sec">Incidents by grade</div><div class="card"><canvas id="c-gr" height="100" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">Behavior types <span style="font-weight:400;color:var(--text3);font-size:10px;text-transform:none;letter-spacing:0">(tagged incidents · multi-select)</span></div><div class="card">'+
     (LD.behaviors||D.behaviors).map(function(b,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+b.t+'</span><span style="font-family:DM Mono,monospace;color:'+(b.t==='Unspecified'?'var(--text3)':'var(--text2)')+'">'+b.n+'</span></div>'+pb((b.n/76)*100,b.t==='Unspecified'?'var(--text3)':SER[i%SER.length])+'</div>';}).join('')+'</div>'+
-    '<div class="sec">Specials class totals</div><div class="card">'+
-    (LD.specials||D.specials).map(function(s,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+(SC[s.n]||'var(--text)')+'">'+s.n+'</span><span style="font-family:DM Mono,monospace">'+s.total+'</span></div>'+pb((s.total/99)*100,SC[s.n]||SER[i])+'</div>';}).join('')+'</div>';
+    '<div class="sec">By subject</div><div class="card">'+
+    (function(){
+      var specList=LD.specials&&LD.specials.length?LD.specials:[];
+      if(!specList.length) return '<div style="font-size:11px;color:var(--text3);padding:8px 0">No live data yet.</div>';
+      var mx=specList[0].total||1;
+      return specList.map(function(s,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+(SC[s.n]||'var(--text)')+'">'+s.n+'</span><span style="font-family:DM Mono,monospace">'+s.total+'</span></div>'+pb((s.total/mx)*100,SC[s.n]||SER[i])+'</div>';}).join('');
+    }())+'</div>';
 }
 function bTM(live){
   var LD=live||{};
