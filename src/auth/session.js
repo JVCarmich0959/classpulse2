@@ -1,5 +1,3 @@
-export { saveSession, loadSession, refreshSession, signOut } from '../main.js';
-
 export function checkInviteToken() {
   const hash = window.location.hash;
   if (!hash) return null;
