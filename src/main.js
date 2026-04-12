@@ -631,29 +631,6 @@ function renderHistory(){
           '<span class="tag '+(delta===null?'gray':delta>0?'red':delta<0?'green':'gray')+'" style="font-size:9px">'+(delta===null?'—':(delta>0?'+':'')+delta+'%')+'</span>'+
         '</div></div>';
     }).join('')+'</div>':'';
-  var homeroomHtml='';
-  if(SESSION.role==='homeroom'){
-    var hrMap={};
-    allLogs.forEach(function(l){
-      if(!l.homeroom) return;
-      hrMap[l.homeroom]=1;
-    });
-    var hrList=Object.keys(hrMap).sort();
-    if(hrList.length){
-      homeroomHtml='<div class="sec">Your homeroom classes</div><div class="card">'+
-        hrList.map(function(hr){
-          var liveRows=(STATE.liveRows||[]).filter(function(r){return (r.homeroom||'')===hr;});
-          var total=liveRows.length;
-          var chartPct=total?Math.round(liveRows.filter(function(r){return !!r.color_chart;}).length/total*100):0;
-          var homePct=total?Math.round(liveRows.filter(function(r){return !!r.home_contact;}).length/total*100):0;
-          return '<div class="li" data-hrd="'+escHtml(hr)+'">'+
-            '<div class="li-c"><div class="li-t">'+escHtml(hr)+'</div><div class="li-s">'+total+' incidents · Chart '+chartPct+'% · Home '+homePct+'%</div></div>'+
-            '<div style="color:var(--text3);font-size:18px">›</div>'+
-          '</div>';
-        }).join('')+
-      '</div>';
-    }
-  }
 
   function barRow(name,n,max,color){
     var pct=Math.round((n/max)*100);
@@ -680,7 +657,6 @@ function renderHistory(){
     :'')+
     '<div class="sec">Weekly pattern heatmap</div><div class="card" id="hist-heat-card" style="overflow-x:auto"></div>'+
     monthHtml+
-    homeroomHtml+
     (topStus.length?
       '<div class="sec">Your students</div>'+
       '<div class="card" style="margin-bottom:10px">'+
@@ -741,14 +717,6 @@ function renderHistory(){
     setTimeout(function(){ drawLine('hist-wk-line', wkLabels, wkVals); },20);
   }
   wireHeatCard('hist-heat-card', allLogs, {prefix:'hist-heat',showFilters:false});
-  body.querySelectorAll('[data-hrd]').forEach(function(card){
-    card.addEventListener('click',function(){
-      var hr=card.dataset.hrd;
-      var classRows=(STATE.liveRows||[]).filter(function(r){return (r.homeroom||'')===hr;});
-      setDetPrevScreen('S-teacher');
-      openDet(hr, classRows.length?buildLiveStats(classRows):null);
-    });
-  });
   wireStudentLinks(body,'S-teacher');
   // bind toggles
   body.querySelectorAll('[data-toggle]').forEach(function(hdr){
