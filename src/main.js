@@ -162,6 +162,21 @@ function getSubjects(){
 }
 var HOMEROOMS=ALL_CLASSES;
 var SER=['#00e6c8','#f0c040','#ff4466','#a78bfa','#34d399','#f97316','#60a5fa','#4d6490'];
+
+var SUBJECT_TEACHER={
+  'PE':'Mrs. Offield',
+  'Technology':'Ms. Carmichael',
+  'Art':'Mrs. Ali',
+  'Music':'Mrs. Groff'
+};
+
+function getSubmitterDisplay(email, subject){
+  if(email && email!=='import@waynestem.org' && email!=='specials-team'){
+    return emailToDisplayName(email);
+  }
+  if(subject && SUBJECT_TEACHER[subject]) return SUBJECT_TEACHER[subject];
+  return '';
+}
 var SC={'PE':'#00e6c8','Technology':'#a78bfa','Art':'#f0c040','Music':'#ff4466','P.E.':'#00e6c8'};
 
 
@@ -1368,8 +1383,8 @@ function renderIncidentList(rows, container, onAfterEdit){
         var uid='db-'+r.id;
         var behs=r.behaviors||[];
         var hasNotes=r.notes&&r.notes.trim().length>0;
-        var submitter=r.submitted_by&&r.submitted_by!=='import@waynestem.org'?
-          '<span style="font-size:9px;color:var(--text3);font-family:DM Mono,monospace;margin-left:4px">'+emailToDisplayName(r.submitted_by||'')+'</span>':'';
+        var submitter=getSubmitterDisplay(r.submitted_by,r.subject||r.specials);
+        submitter=submitter?'<span style="font-size:9px;color:var(--text3);font-family:DM Mono,monospace;margin-left:4px">'+escHtml(submitter)+'</span>':'';
         return '<div class="log-item" data-uid="'+uid+'">'+
           '<div class="log-hdr" data-toggle="'+uid+'">'+
             '<div class="log-name">'+stuNameLink(r.student||'—')+submitter+
