@@ -149,7 +149,7 @@ var BAND_LABELS = {
 };
 
 var BEHAVIORS=['Verbal disruption','Noncompliance','Off-task','Emotional distress','Peer conflict','Physical behavior','Out of seat','Device misuse'];
-var SPECIALS=['P.E.','Technology','Art','Music'];
+var SPECIALS=['PE','Technology','Art','Music']; // fallback only — use getSpecials()
 var HOMEROOMS=ALL_CLASSES;
 var SER=['#00e6c8','#f0c040','#ff4466','#a78bfa','#34d399','#f97316','#60a5fa','#4d6490'];
 var SC={'PE':'#00e6c8','Technology':'#a78bfa','Art':'#f0c040','Music':'#ff4466','P.E.':'#00e6c8'};
@@ -604,7 +604,25 @@ function populateEditSheet(l){
   var hrSel=el('es-homeroom');
   hrSel.innerHTML=HOMEROOMS.map(function(h){return '<option value="'+h+'"'+(l.homeroom===h?' selected':'')+'>'+h+'</option>';}).join('');
   var spSel=el('es-specials');
-  for(var i=0;i<spSel.options.length;i++){spSel.options[i].selected=(spSel.options[i].value===l.specials);}
+  var spChips=el('es-specials-chips');
+  var spLabel=el('es-specials-label');
+  var curSubj=l.specials||l.subject||'';
+  if(spLabel) spLabel.textContent=SESSION.role==='homeroom'?'Subject / context':'Subject';
+  if(spSel) spSel.value=curSubj;
+  if(spChips){
+    spChips.innerHTML=getSpecials().map(function(s){
+      return '<button type="button" class="chip'+(s===curSubj?' on':'')+'" data-es="'+s+'">'+s+'</button>';
+    }).join('');
+    spChips.querySelectorAll('[data-es]').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        curSubj=btn.dataset.es;
+        if(spSel) spSel.value=curSubj;
+        spChips.querySelectorAll('[data-es]').forEach(function(b){
+          b.classList.toggle('on',b.dataset.es===curSubj);
+        });
+      });
+    });
+  }
   el('es-student').value=l.studentName||'';
   el('es-date').value=l.date||'';
   el('es-time').value=l.time||'';
