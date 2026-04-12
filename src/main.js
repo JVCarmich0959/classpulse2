@@ -575,12 +575,33 @@ function renderHistory(){
   });
   var wkKeys=Object.keys(weekMap).sort().slice(-8);
   var wkVals=wkKeys.map(function(k){return weekMap[k];});
-  var maxWk=Math.max.apply(null,wkVals)||1;
-  var wkW=280,wkH=44,pts=wkVals.map(function(v,i){
-    var x=wkVals.length<2?wkW/2:(i/(wkVals.length-1))*(wkW-20)+10;
-    var y=wkH-4-((v/maxWk)*(wkH-12));
-    return x+','+y;
-  }).join(' ');
+  var wkLabels=wkKeys.map(function(k){
+    var d=new Date(k+'T12:00:00');
+    return isNaN(d)?k:(d.toLocaleString('en-US',{month:'short'})+' '+d.getDate());
+  });
+  var monthMap={};
+  allLogs.forEach(function(l){
+    if(!l.date) return;
+    var mk=l.date.slice(0,7);
+    monthMap[mk]=(monthMap[mk]||0)+1;
+  });
+  var monthKeys=Object.keys(monthMap).sort().slice(-4);
+  var monthHtml=monthKeys.length?'<div class="sec">Monthly changes</div><div class="card" style="margin-bottom:10px">'+
+    monthKeys.map(function(mk,idx){
+      var v=monthMap[mk];
+      var prev=idx?monthMap[monthKeys[idx-1]]:null;
+      var delta=(prev&&prev>0)?Math.round(((v-prev)/prev)*100):null;
+      var dLab=(function(){
+        var d=new Date(mk+'-01T12:00:00');
+        return isNaN(d)?mk:d.toLocaleString('en-US',{month:'short',year:'numeric'});
+      })();
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:'+(idx<monthKeys.length-1?'0.5px solid var(--border)':'0')+'">'+
+        '<div style="font-size:12px">'+dLab+'</div>'+
+        '<div style="display:flex;gap:8px;align-items:center">'+
+          '<span style="font-family:DM Mono,monospace;font-size:12px">'+v+'</span>'+
+          '<span class="tag '+(delta===null?'gray':delta>0?'red':delta<0?'green':'gray')+'" style="font-size:9px">'+(delta===null?'—':(delta>0?'+':'')+delta+'%')+'</span>'+
+        '</div></div>';
+    }).join('')+'</div>':'';
 
   function barRow(name,n,max,color){
     var pct=Math.round((n/max)*100);
@@ -602,14 +623,11 @@ function renderHistory(){
     (wkVals.length>1?
       '<div class="sec">Weekly trend</div>'+
       '<div class="card" style="margin-bottom:10px;padding:10px 12px">'+
-        '<svg width="100%" height="'+wkH+'px" viewBox="0 0 '+wkW+' '+wkH+'" preserveAspectRatio="xMidYMid meet" style="display:block">'+
-          '<polyline points="'+pts+'" fill="none" stroke="#00e6c8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
-        '</svg>'+
-        '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);font-family:DM Mono,monospace;margin-top:4px">'+
-          '<span>'+(wkKeys[0]||'')+'</span><span>'+(wkKeys[wkKeys.length-1]||'')+'</span>'+
-        '</div>'+
+        '<canvas id="hist-wk-line" height="80" style="width:100%;display:block"></canvas>'+
       '</div>'
     :'')+
+    '<div class="sec">Weekly pattern heatmap</div><div class="card" id="hist-heat-card" style="overflow-x:auto"></div>'+
+    monthHtml+
     (topStus.length?
       '<div class="sec">Your students</div>'+
       '<div class="card" style="margin-bottom:10px">'+
@@ -666,6 +684,10 @@ function renderHistory(){
       }).join('');
   }).join('');
   body.innerHTML=summ+logHtml;
+  if(wkVals.length>1){
+    setTimeout(function(){ drawLine('hist-wk-line', wkLabels, wkVals); },20);
+  }
+  wireHeatCard('hist-heat-card', allLogs, {prefix:'hist-heat',showFilters:false});
   wireStudentLinks(body,'S-teacher');
   // bind toggles
   body.querySelectorAll('[data-toggle]').forEach(function(hdr){
@@ -990,13 +1012,13 @@ function buildHeatGrid(rows, subjectFilter){
       var s=r.subject||r.specials;
       if(s!==subjectFilter) return;
     }
-    if(!r.incident_date&&!r.created_at) return;
-    var dateStr=r.incident_date||r.created_at.slice(0,10);
+    var dateStr=(r.incident_date||r.date||(r.created_at||'').slice(0,10));
+    if(!dateStr) return;
     var d=new Date(dateStr+'T12:00:00');
     var dow=d.getDay();
     if(dow===0||dow===6) return;
     var dayLabel=HEAT_DAYS[dow-1];
-    var period=getPeriod(r.incident_time||r.created_at.slice(11,16));
+    var period=getPeriod(r.incident_time||r.time||(r.created_at||'').slice(11,16));
     if(!period) return;
     grid[period][dayLabel]++;
     incidents[period][dayLabel].push(r);
@@ -1004,15 +1026,17 @@ function buildHeatGrid(rows, subjectFilter){
   return {grid:grid,incidents:incidents};
 }
 
-function bHeat(subjectFilter){
-  var rows=STATE.liveRows||[];
-  var data=buildHeatGrid(rows,subjectFilter||'all');
+function bHeatForRows(rows, subjectFilter, opts){
+  opts=opts||{};
+  var showFilters=opts.showFilters!==false;
+  var prefix=opts.prefix||'heat';
+  var data=buildHeatGrid(rows||[],subjectFilter||'all');
   var grid=data.grid;
   var mx=0;
   PERIODS.forEach(function(p){HEAT_DAYS.forEach(function(d){if(grid[p.label][d]>mx)mx=grid[p.label][d];});});
 
-  var subjects=['all'].concat(Object.keys(rows.reduce(function(a,r){var s=r.subject||r.specials;if(s)a[s]=1;return a;},{})));
-  var filterHtml='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+
+  var subjects=['all'].concat(Object.keys((rows||[]).reduce(function(a,r){var s=r.subject||r.specials;if(s)a[s]=1;return a;},{})));
+  var filterHtml=showFilters?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+
     subjects.map(function(s){
       var on=(subjectFilter||'all')===s;
       return '<button type="button" data-hf="'+escHtml(s)+'" style="'+
@@ -1020,7 +1044,7 @@ function bHeat(subjectFilter){
         'border-radius:10px;border:1px solid '+(on?'var(--accent)':'rgba(0,230,200,.25)')+';'+
         'background:'+(on?'rgba(0,230,200,.12)':'transparent')+';'+
         'color:'+(on?'var(--accent)':'var(--text3)')+';cursor:pointer">'+(s==='all'?'All':escHtml(s))+'</button>';
-    }).join('')+'</div>';
+    }).join('')+'</div>':'';
 
   var h='<table class="htable" style="width:100%;border-collapse:collapse">'+
     '<thead><tr>'+
@@ -1049,34 +1073,43 @@ function bHeat(subjectFilter){
   });
 
   h+='</tbody></table>';
-  var drillHtml='<div id="heat-drill" style="display:none;margin-top:12px;border-top:1px solid rgba(0,230,200,.15);padding-top:12px">'+
-    '<div id="heat-drill-hdr" style="font-size:11px;color:var(--accent);font-family:DM Mono,monospace;margin-bottom:8px"></div>'+
-    '<div id="heat-drill-list"></div></div>';
+  var drillHtml='<div id="'+prefix+'-drill" style="display:none;margin-top:12px;border-top:1px solid rgba(0,230,200,.15);padding-top:12px">'+
+    '<div id="'+prefix+'-drill-hdr" style="font-size:11px;color:var(--accent);font-family:DM Mono,monospace;margin-bottom:8px"></div>'+
+    '<div id="'+prefix+'-drill-list"></div></div>';
 
   return filterHtml+h+drillHtml;
 }
 
-function wireHeat(subjectFilter){
-  var card=document.getElementById('heat-card');
+function wireHeatCard(cardId, rows, opts){
+  opts=opts||{};
+  var prefix=opts.prefix||'heat';
+  var showFilters=opts.showFilters!==false;
+  var currentFilter=opts.subjectFilter||'all';
+  var card=document.getElementById(cardId);
   if(!card) return;
+  card.innerHTML=bHeatForRows(rows||[], currentFilter, {prefix:prefix,showFilters:showFilters});
   card.addEventListener('click',function(e){
     // filter chip
     var hf=e.target.closest('[data-hf]');
-    if(hf){
+    if(hf&&showFilters){
       var s=hf.dataset.hf;
-      card.innerHTML=bHeat(s);
-      wireHeat(s);
+      currentFilter=s;
+      card.innerHTML=bHeatForRows(rows||[], currentFilter, {prefix:prefix,showFilters:showFilters});
       return;
     }
     // cell click
     var hp=e.target.closest('[data-hp]');
     if(hp){
       var period=hp.dataset.hp, day=hp.dataset.hd;
-      var data=buildHeatGrid(STATE.liveRows||[],subjectFilter||'all');
+      var data=buildHeatGrid(rows||[],currentFilter||'all');
       var list=(data.incidents[period]&&data.incidents[period][day])||[];
-      var drill=document.getElementById('heat-drill');
-      var hdr=document.getElementById('heat-drill-hdr');
-      var ul=document.getElementById('heat-drill-list');
+      if(typeof opts.onCellClick==='function'){
+        opts.onCellClick(list,{period:period,day:day});
+        return;
+      }
+      var drill=document.getElementById(prefix+'-drill');
+      var hdr=document.getElementById(prefix+'-drill-hdr');
+      var ul=document.getElementById(prefix+'-drill-list');
       if(!drill) return;
       if(!list.length){drill.style.display='none';return;}
       hdr.textContent=period+' · '+HEAT_DAY_FULL[HEAT_DAYS.indexOf(day)]+' — '+list.length+' incident'+(list.length===1?'':'s');
@@ -1095,6 +1128,12 @@ function wireHeat(subjectFilter){
       drill.style.display='block';
     }
   });
+}
+function bHeat(subjectFilter){
+  return bHeatForRows(STATE.liveRows||[],subjectFilter||'all',{prefix:'heat',showFilters:true});
+}
+function wireHeat(subjectFilter){
+  wireHeatCard('heat-card', STATE.liveRows||[], {prefix:'heat',showFilters:true,subjectFilter:subjectFilter||'all'});
 }
 function bCV(){
   var rows=STATE.liveRows||[];
@@ -1217,10 +1256,10 @@ function bST(live){
   var LD=live||{};
   var stuList=LD.top_students&&LD.top_students.length?LD.top_students:D.top_students;
   var mx=stuList[0].n;
-  return '<div style="background:#1a0010;border:0.5px solid var(--red);border-radius:var(--r);padding:10px 14px;font-size:11px;color:#ff9a9a;margin-bottom:12px;display:flex;gap:8px;line-height:1.5">'+
-    '<span>🔒</span><span><strong>Restricted.</strong> For administrator use only. Do not distribute without redacting names.</span></div>'+
+  return '<div style="background:#1a0010;border:0.5px solid var(--red);border-radius:var(--r);padding:10px 14px;font-size:11px;color:#ff9a9a;margin-bottom:12px;line-height:1.5">'+
+    '<strong>Restricted.</strong> For administrator use only. Do not distribute without redacting names.</div>'+
     '<div class="sec">Students with 4+ logged incidents</div><div class="card">'+
-    stuList.map(function(s){return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+s.name+'</span><span style="font-family:DM Mono,monospace;font-weight:500;color:'+(s.n>=7?'var(--red)':s.n>=5?'var(--amber)':'var(--text2)')+'">'+s.n+'</span></div>'+pb((s.n/mx)*100,s.n>=7?'var(--red)':s.n>=5?'var(--amber)':'var(--accent)')+'</div>';}).join('')+'</div>'+
+    stuList.map(function(s){return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+stuNameLink(s.name)+'</span><span style="font-family:DM Mono,monospace;font-weight:500;color:'+(s.n>=7?'var(--red)':s.n>=5?'var(--amber)':'var(--text2)')+'">'+s.n+'</span></div>'+pb((s.n/mx)*100,s.n>=7?'var(--red)':s.n>=5?'var(--amber)':'var(--accent)')+'</div>';}).join('')+'</div>'+
     '<div class="sec">System improvements needed</div><div class="card">'+
     [{t:'EOG testing window (May 19–21)',b:'Mark testing windows to separate stress spikes from baseline classroom patterns.'},{t:'Normalize by class meetings',b:'Replace calendar days with actual class meeting counts for fair comparisons.'},{t:'Coded consequence field',b:'Free-text consequences make intervention analysis impossible — use a controlled list.'},{t:'Stable student ID',b:'Name spelling variants (Jaxon/Jaxson, Lafayette/Lafeyette) undercount repeat students.'}].map(function(r){return '<div style="padding:10px 0;border-bottom:0.5px solid var(--border)"><div style="font-size:12px;font-weight:600;margin-bottom:3px">'+r.t+'</div><div style="font-size:11px;color:var(--text2);line-height:1.4">'+r.b+'</div></div>';}).join('')+'</div>';
 }
@@ -1519,7 +1558,7 @@ function openDet(id,live){
   wireStudentLinks(el('det-body'),'S-detail');
   showScreen('S-detail');
   setTimeout(function(){
-    drawBar('c-det-wk',c.weekly.map(function(w){return w.w;}),c.weekly.map(function(w){return w.n;}),c.weekly.map(function(_,i){return SER[i%SER.length];}));
+    drawLine('c-det-wk',c.weekly.map(function(w){return w.w;}),c.weekly.map(function(w){return w.n;}));
     // fetch and render individual incidents
     fetchClassIncidents(id, function(err, rows){
       var countEl=el('det-inc-count');
@@ -1839,6 +1878,7 @@ export {
   fetchLiveData, buildLiveStats, fetchClassIncidents, fetchStudentIncidents, renderIncidentList,
   sbInsert,
   drawLine, drawBar, pb,
+  wireHeatCard,
   openEditSheet, closeEditSheet, populateEditSheet, openDelConfirm, closeDelConfirm,
   renderStep, goTeacher, showPane, closeSheet, renderHistory, fetchMyLogs,
   goAdmin, renderAdmin, setTab, bOV, bTM, bCV, bST, bCL,
