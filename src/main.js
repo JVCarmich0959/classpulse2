@@ -1,4 +1,5 @@
 import { SB_URL, SB_KEY } from './config.js';
+import { checkInviteToken } from './auth/session.js';
 import { openStudent, wireStudentLinks, stuNameLink } from './views/admin/student.js';
 
 'use strict';
@@ -1398,21 +1399,6 @@ el('del-go-btn').addEventListener('click',function(){
 // Offline support is available when deployed via Netlify/Vercel (add a sw.js file).
 
 
-// ── INVITE TOKEN HANDLER ──
-function checkInviteToken(){
-  var hash = window.location.hash;
-  if(!hash) return null;
-  var params = new URLSearchParams(hash.replace('#','?'));
-  var type = params.get('type');
-  var token = params.get('access_token');
-  if((type === 'invite' || type === 'recovery') && token) return token;
-  // Also check query string (Supabase PKCE flow)
-  var qp = new URLSearchParams(window.location.search);
-  var qtype = qp.get('type');
-  var qtoken = qp.get('access_token');
-  if((qtype === 'invite' || qtype === 'recovery') && qtoken) return qtoken;
-  return null;
-}
 
 function initPasswordSetup(token){
   fetch(SB_URL + '/auth/v1/user', {
