@@ -55,18 +55,18 @@ var SESSION = {token: null, email: null, userId: null, role: null, refresh: null
 function saveSession(token, email, userId, refresh){
   SESSION.token = token; SESSION.email = email; SESSION.userId = userId || null; SESSION.refresh = refresh || null;
   try{
-    sessionStorage.setItem('sb_token', token);
-    sessionStorage.setItem('sb_email', email);
-    if(userId) sessionStorage.setItem('sb_uid', userId);
-    if(refresh) sessionStorage.setItem('sb_refresh', refresh);
+    localStorage.setItem('sb_token', token);
+    localStorage.setItem('sb_email', email);
+    if(userId) localStorage.setItem('sb_uid', userId);
+    if(refresh) localStorage.setItem('sb_refresh', refresh);
   }catch(e){}
 }
 function loadSession(){
   try{
-    var t=sessionStorage.getItem('sb_token');
-    var e=sessionStorage.getItem('sb_email');
-    var u=sessionStorage.getItem('sb_uid');
-    var rf=sessionStorage.getItem('sb_refresh');
+    var t=localStorage.getItem('sb_token');
+    var e=localStorage.getItem('sb_email');
+    var u=localStorage.getItem('sb_uid');
+    var rf=localStorage.getItem('sb_refresh');
     if(t){SESSION.token=t;SESSION.email=e;SESSION.userId=u||null;SESSION.refresh=rf||null;return true;}
   }catch(e){}
   return false;
@@ -301,7 +301,7 @@ function initLogin(){
 // ── SIGN OUT ──
 function signOut(){
   SESSION.token = null; SESSION.email = null; SESSION.userId = null; SESSION.role = null; SESSION.refresh = null;
-  try{sessionStorage.removeItem('sb_token');sessionStorage.removeItem('sb_email');sessionStorage.removeItem('sb_uid');sessionStorage.removeItem('sb_refresh');}catch(e){}
+  try{localStorage.removeItem('sb_token');localStorage.removeItem('sb_email');localStorage.removeItem('sb_uid');localStorage.removeItem('sb_refresh');}catch(e){}
   STATE.liveRows = []; STATE.liveLoaded = false; STATE.liveError = false;
   STATE.logs = []; STATE.entry = freshEntry(); STATE.step = 0;
   showScreen('S-login');
