@@ -1,0 +1,13 @@
+{
+  "name": "ClassPulse",
+  "short_name": "ClassPulse",
+  "description": "Behavior documentation for Wayne STEM Academy specials team",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060a0f",
+  "theme_color": "#00e6c8",
+  "orientation": "portrait"
+}
