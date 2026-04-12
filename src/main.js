@@ -173,6 +173,52 @@ function nowStr(){var d=new Date();return d.toTimeString().slice(0,5);}
 function freshEntry(){return{studentName:'',homeroom:'',specials:'',behaviors:[],date:todayStr(),time:nowStr(),colorChart:false,homeContact:false,notes:''};}
 function el(id){return document.getElementById(id);}
 function pb(pct,col){return '<div class="pbar"><div style="--pw:'+Math.min(pct,100)+'%;background:'+col+'" class="pfill"></div></div>';}
+
+function startEegAnimation(){
+  var svg=document.getElementById('eeg-loading-svg');
+  if(!svg) return null;
+  var W=280,H=52,mid=H/2;
+  var offset=0;
+  var running=true;
+  function makePts(off){
+    var pts=[];
+    for(var x=0;x<W;x++){
+      var sx=(x+off)%W;
+      var y=mid;
+      var d=sx-140;
+      if(Math.abs(d)<30){
+        if(d<0) y=mid-18*Math.exp(-Math.pow(sx-133,2)/8);
+        else if(d<8) y=mid+11*Math.exp(-Math.pow(sx-145,2)/6);
+        else y=mid-5*Math.exp(-Math.pow(sx-151,2)/10);
+      }
+      pts.push([x,y]);
+    }
+    return pts;
+  }
+  function frame(){
+    if(!running) return;
+    offset=(offset+1.5)%W;
+    var pts=makePts(offset);
+    var pathD='M'+pts.map(function(p){return p[0]+','+p[1];}).join('L');
+    var peakPt=pts[Math.round(W*0.4)]||[0,mid];
+    var troughPt=pts[Math.round(W*0.53)]||[0,mid];
+    svg.innerHTML=
+      '<defs><linearGradient id="efade" x1="0" x2="1" y1="0" y2="0">'+
+        '<stop offset="0%" stop-color="var(--bg)"/>'+
+        '<stop offset="12%" stop-color="transparent"/>'+
+        '<stop offset="88%" stop-color="transparent"/>'+
+        '<stop offset="100%" stop-color="var(--bg)"/>'+
+      '</linearGradient></defs>'+
+      '<line x1="0" y1="'+mid+'" x2="'+W+'" y2="'+mid+'" stroke="var(--accent)" stroke-width="1" opacity="0.12"/>'+
+      '<path d="'+pathD+'" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
+      '<circle cx="'+peakPt[0]+'" cy="'+peakPt[1]+'" r="3.5" fill="var(--accent)"/>'+
+      '<circle cx="'+troughPt[0]+'" cy="'+troughPt[1]+'" r="3.5" fill="var(--red)"/>'+
+      '<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="url(#efade)"/>';
+    requestAnimationFrame(frame);
+  }
+  frame();
+  return function(){ running=false; };
+}
 function alrt(t){return '<div class="alert"><span style="flex-shrink:0">⚠</span><span>'+t+'</span></div>';}
 function kpiH(lb,v,sub,flag){return '<div class="kpi'+(flag?' flag':'')+'"><div class="lbl">'+lb+'</div><div class="val" style="color:'+(flag?'var(--red)':'var(--text)')+'">'+v+'</div><div class="sub">'+sub+'</div></div>';}
 
@@ -204,8 +250,12 @@ function initLogin(){
   if(!btnLogin) return;
 
   if(loadSession()){
+    showScreen('S-loading');
+    var stopEeg=startEegAnimation();
     updateUserDisplay();
     fetchRole(SESSION.userId, function(err, role){
+      if(stopEeg) stopEeg();
+      if(err || !role){ showScreen('S-login'); return; }
       SESSION.role = role;
       if(role === 'admin'){ goAdmin(); } else { goTeacher(); }
     });

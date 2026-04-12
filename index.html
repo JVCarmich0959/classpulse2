@@ -18,6 +18,16 @@
 <body>
 <div id="app">
 
+<div id="S-loading" class="screen hidden">
+  <div style="background:var(--bg);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;box-sizing:border-box">
+    <div style="font-family:DM Mono,monospace;font-size:26px;color:var(--accent);letter-spacing:.06em;font-weight:700;margin-bottom:4px">CLASSPULSE</div>
+    <div style="width:280px;height:52px;position:relative;margin-bottom:20px;overflow:hidden">
+      <svg id="eeg-loading-svg" width="280" height="52" style="display:block"></svg>
+    </div>
+    <div style="font-family:DM Mono,monospace;font-size:11px;color:var(--text3);letter-spacing:.1em" id="eeg-loading-msg">Restoring session…</div>
+  </div>
+</div>
+
 <div id="S-login" class="screen">
   <div class="st"></div>
   <div class="login-shell">
