@@ -1,0 +1,44 @@
+<svg width="100%" viewBox="0 0 680 680" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>ClassPulse icon</title>
+  <desc>Observation lens with pulse detail inside corner bracket frame</desc>
+  <rect width="680" height="680" fill="#060a0f" rx="120"/>
+  <g stroke="#00e6c8" stroke-width="0.6" opacity="0.05">
+    <line x1="0" y1="85" x2="680" y2="85"/><line x1="0" y1="170" x2="680" y2="170"/>
+    <line x1="0" y1="255" x2="680" y2="255"/><line x1="0" y1="340" x2="680" y2="340"/>
+    <line x1="0" y1="425" x2="680" y2="425"/><line x1="0" y1="510" x2="680" y2="510"/>
+    <line x1="0" y1="595" x2="680" y2="595"/>
+    <line x1="85" y1="0" x2="85" y2="680"/><line x1="170" y1="0" x2="170" y2="680"/>
+    <line x1="255" y1="0" x2="255" y2="680"/><line x1="340" y1="0" x2="340" y2="680"/>
+    <line x1="425" y1="0" x2="425" y2="680"/><line x1="510" y1="0" x2="510" y2="680"/>
+    <line x1="595" y1="0" x2="595" y2="680"/>
+  </g>
+  <path d="M130,210 L130,130 L210,130" fill="none" stroke="#00e6c8" stroke-width="8" stroke-linecap="square"/>
+  <path d="M470,130 L550,130 L550,210" fill="none" stroke="#00e6c8" stroke-width="8" stroke-linecap="square"/>
+  <path d="M550,470 L550,550 L470,550" fill="none" stroke="#00e6c8" stroke-width="8" stroke-linecap="square"/>
+  <path d="M210,550 L130,550 L130,470" fill="none" stroke="#00e6c8" stroke-width="8" stroke-linecap="square"/>
+  <path d="M130,340 Q240,200 340,200 Q440,200 550,340 Q440,480 340,480 Q240,480 130,340 Z"
+    fill="none" stroke="#00e6c8" stroke-width="3" opacity="0.5"/>
+  <path d="M130,340 Q240,200 340,200 Q440,200 550,340 Q440,480 340,480 Q240,480 130,340 Z"
+    fill="#00e6c8" opacity="0.04"/>
+  <circle cx="340" cy="340" r="88" fill="none" stroke="#00e6c8" stroke-width="2" opacity="0.4"/>
+  <circle cx="340" cy="340" r="64" fill="none" stroke="#00e6c8" stroke-width="1" opacity="0.25"/>
+  <circle cx="340" cy="340" r="88" fill="#00e6c8" opacity="0.06"/>
+  <g stroke="#00e6c8" stroke-width="1" opacity="0.2">
+    <line x1="340" y1="252" x2="340" y2="276"/>
+    <line x1="340" y1="404" x2="340" y2="428"/>
+    <line x1="252" y1="340" x2="276" y2="340"/>
+    <line x1="404" y1="340" x2="428" y2="340"/>
+    <line x1="278" y1="278" x2="295" y2="295"/>
+    <line x1="385" y1="278" x2="402" y2="295"/>
+    <line x1="278" y1="402" x2="295" y2="385"/>
+    <line x1="385" y1="402" x2="402" y2="385"/>
+  </g>
+  <circle cx="340" cy="340" r="44" fill="#060a0f"/>
+  <circle cx="340" cy="340" r="44" fill="none" stroke="#00e6c8" stroke-width="2.5" opacity="0.7"/>
+  <polyline
+    points="302,340 314,340 322,318 332,362 340,328 348,352 356,340 378,340"
+    fill="none" stroke="#00e6c8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="340" cy="340" r="5" fill="#00e6c8"/>
+  <ellipse cx="310" cy="300" rx="14" ry="8" fill="#00e6c8" opacity="0.12" transform="rotate(-30 310 300)"/>
+  <rect x="130" y="130" width="420" height="420" fill="none" stroke="#00e6c8" stroke-width="1" opacity="0.08"/>
+</svg>
