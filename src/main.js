@@ -433,7 +433,7 @@ function renderHistory(){
   });
   var allLogs=STATE.logs.concat(filteredDb);
   if(!allLogs.length){
-    body.innerHTML='<div class="empty"><div class="empty-ico">📋</div><div class="empty-t">No logs yet</div><div class="empty-s">Your incidents will appear here as you log them.</div></div>';
+    body.innerHTML='<div class="empty"><div class="empty-t">No logs yet</div><div class="empty-s">Your incidents will appear here as you log them.</div></div>';
     return;
   }
   var chartCount=allLogs.filter(function(l){return l.colorChart||l.color_chart;}).length;
@@ -760,12 +760,11 @@ function buildLiveStats(rows){
 function setTab(t){STATE.adminTab=t;document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab===t);});renderAdmin();}
 
 // Interpretation note shown once at top of admin, persists across tabs
-var INTERP='<div class="interp-note"><strong>About these numbers.</strong> Behavior patterns and documentation patterns are not the same thing. A lower incident count for a class may reflect genuinely fewer incidents <em>or</em> less consistent logging — both are possible. Specials counts are partial: they cover only P.E., Technology, Art, and Music, not homeroom or schoolwide referrals. Do not compare classes on count alone without checking coverage.</div>';
 
 function renderAdmin(){
   var body=el('admin-body'),t=STATE.adminTab;
   if(!STATE.liveLoaded){
-    body.innerHTML=INTERP+'<div style="text-align:center;padding:40px 0;color:var(--text3);font-size:12px;letter-spacing:.06em">LOADING LIVE DATA…</div>';
+    body.innerHTML='<div style="text-align:center;padding:40px 0;color:var(--text3);font-size:12px;letter-spacing:.06em">LOADING LIVE DATA…</div>';
     fetchLiveData(function(){renderAdmin();});
     return;
   }
@@ -776,7 +775,7 @@ function renderAdmin(){
   else if(t==='coverage') content=bCV();
   else if(t==='students') content=bST(live);
   else content=bCL(live);
-  body.innerHTML=INTERP+content;
+  body.innerHTML=content;
   if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">⚠ Could not reach Supabase — showing cached data</div>'+body.innerHTML;
   if(t==='students') wireStudentLinks(body,'S-admin');
   setTimeout(drawCharts,60);
@@ -808,7 +807,7 @@ function bOV(live){
 }
 function bTM(live){
   var LD=live||{};
-  return alrt('Wednesday leads at 8.0 incidents/day — new finding from real data. Monday is second at 5.89.')+
+  return 
     '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per school day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">Heatmap · time block × weekday</div><div class="card" style="overflow-x:auto">'+bHeat()+'</div>';
 }
@@ -1098,7 +1097,7 @@ function openDet(id,live){
 
   if(isZero){
     el('det-body').innerHTML=
-      '<div class="empty" style="padding-top:36px"><div class="empty-ico">📭</div>'+
+      '<div class="empty" style="padding-top:36px">'+
       '<div class="empty-t">No incidents logged</div>'+
       '<div class="empty-s">No specials incidents were recorded for this classroom during Jan 21 – Apr 1, 2026.<br><br>This may reflect genuinely smooth sessions, inconsistent logging, or limited specials overlap. It is not confirmation of no issues.</div></div>'+
       '<div style="height:16px"></div>';
