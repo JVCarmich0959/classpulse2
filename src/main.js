@@ -1,4 +1,6 @@
 import { SB_URL, SB_KEY } from './config.js';
+import { checkInviteToken } from './auth/session.js';
+import { initPasswordSetup } from './views/login.js';
 import { openStudent, wireStudentLinks, stuNameLink } from './views/admin/student.js';
 
 'use strict';
@@ -288,19 +290,37 @@ function showScreen(id,back){
     else if(!s.classList.contains('hidden')){if(back)s.classList.add('back');s.classList.add('hidden');}
   });
 }
-function goTeacher(){STATE.entry=freshEntry();STATE.step=0;STATE.myDbLoaded=false;STATE.myDbLogs=[];updateUserDisplay();showScreen('S-teacher');showPane('log');renderStep();updateTeacherNav();}
+function goTeacher(){
+  var hadLogsLoaded = !!STATE.myDbLoaded;
+  STATE.entry=freshEntry();
+  STATE.step=0;
+  if(!hadLogsLoaded) STATE.myDbLogs=[];
+  STATE.myDbLoaded = hadLogsLoaded;
+  updateUserDisplay();
+  showScreen('S-teacher');
+  showPane('home');
+  renderStep();
+  updateTeacherNav();
+}
 
 function updateTeacherNav(){
   var sw = el('btn-t-switch');
   if(sw) sw.style.display = SESSION.role === 'admin' ? '' : 'none';
+  var swHome = el('btn-h-switch');
+  if(swHome) swHome.style.display = SESSION.role === 'admin' ? '' : 'none';
+  var swHist = el('btn-th-switch');
+  if(swHist) swHist.style.display = SESSION.role === 'admin' ? '' : 'none';
 }
 
 function goAdmin(){updateUserDisplay();showScreen('S-admin');STATE.adminTab='overview';document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='overview');});renderAdmin();}
 function showPane(pane){
+  el('T-home').style.display=pane==='home'?'flex':'none';
   el('T-log').style.display=pane==='log'?'flex':'none';
   el('T-hist').style.display=pane==='hist'?'flex':'none';
+  el('TN-home').className='ni'+(pane==='home'?' on':'');
   el('TN-log').className='ni'+(pane==='log'?' on':'');
   el('TN-hist').className='ni'+(pane==='hist'?' on':'');
+  if(pane==='home')renderTeacherHome();
   if(pane==='hist')renderHistory();
 }
 
@@ -409,6 +429,76 @@ function fetchMyLogs(cb){
     console.warn('fetchMyLogs error', err);
     if(cb) cb(err, []);
   });
+}
+
+function renderTeacherHome(){
+  var body = el('home-body');
+  if(!body) return;
+  if(!STATE.myDbLoaded){
+    body.innerHTML='<div style="text-align:center;padding:32px 0;color:var(--text3);font-size:11px;letter-spacing:.06em">Loading your dashboard…</div>';
+    fetchMyLogs(function(){ renderTeacherHome(); });
+    return;
+  }
+  var logs = STATE.myDbLogs || [];
+  var total = logs.length;
+  var chartY = logs.filter(function(r){ return !!r.color_chart; }).length;
+  var studentsMap = {};
+  logs.forEach(function(r){
+    var n = (r.student || '').trim();
+    if(n) studentsMap[n] = true;
+  });
+  var studentCount = Object.keys(studentsMap).length;
+  var now = new Date();
+  var sevenAgo = new Date(now.getTime() - 7*24*60*60*1000);
+  var weekCounts = {};
+  logs.forEach(function(r){
+    var dStr = r.incident_date || (r.created_at ? r.created_at.slice(0,10) : '');
+    if(!dStr) return;
+    var dt = new Date(dStr + 'T12:00:00');
+    if(isNaN(dt.getTime()) || dt < sevenAgo || dt > now) return;
+    var nm = (r.student || 'Unknown').trim() || 'Unknown';
+    weekCounts[nm] = (weekCounts[nm] || 0) + 1;
+  });
+  var flagged = Object.keys(weekCounts).filter(function(n){ return weekCounts[n] >= 3; }).sort(function(a,b){ return weekCounts[b]-weekCounts[a]; });
+  var recent = logs.slice().sort(function(a,b){
+    var ad = (a.created_at || '') + (a.incident_time || '');
+    var bd = (b.created_at || '') + (b.incident_time || '');
+    return bd > ad ? 1 : -1;
+  }).slice(0,3);
+  body.innerHTML =
+    '<div class="kpi-grid" style="margin-bottom:12px">'+
+      '<div class="kpi"><div class="lbl">Total logged</div><div class="val">'+total+'</div></div>'+
+      '<div class="kpi"><div class="lbl">Chart use</div><div class="val">'+(total?Math.round((chartY/total)*100):0)+'%</div></div>'+
+      '<div class="kpi"><div class="lbl">Students logged</div><div class="val">'+studentCount+'</div></div>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:12px">'+
+      '<div style="font-size:11px;color:var(--amber);margin-bottom:8px;letter-spacing:.08em;text-transform:uppercase">Needs attention</div>'+
+      (flagged.length ? flagged.map(function(n){
+        return '<div style="border:1px solid rgba(240,192,64,.45);border-radius:10px;padding:10px;margin-bottom:8px;background:rgba(240,192,64,.08);display:flex;justify-content:space-between;gap:10px"><div style="font-weight:600">'+escHtml(n)+'</div><div style="color:var(--amber);font-family:DM Mono,monospace">'+weekCounts[n]+'</div></div>';
+      }).join('') : '<div style="border:1px solid rgba(52,211,153,.3);border-radius:10px;padding:10px;background:rgba(52,211,153,.08);color:var(--green);font-family:DM Mono,monospace">All clear this week</div>')+
+    '</div>'+
+    '<div class="card" style="margin-bottom:12px">'+
+      '<div style="font-size:11px;color:var(--text2);margin-bottom:8px;letter-spacing:.08em;text-transform:uppercase">Recent logs</div>'+
+      (recent.length ? recent.map(function(r){
+        var ds = r.incident_date || (r.created_at ? r.created_at.slice(0,10) : '');
+        var pretty = ds;
+        try{
+          if(ds) pretty = new Date(ds+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
+        }catch(e){}
+        return '<div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">'+
+          '<div style="font-weight:600;margin-bottom:4px">'+escHtml(r.student || 'Unknown')+'</div>'+
+          '<div style="font-size:11px;color:var(--text2)">'+escHtml(r.specials || '—')+' · '+escHtml(pretty || '—')+'</div>'+
+        '</div>';
+      }).join('') : '<div style="font-size:11px;color:var(--text3);font-family:DM Mono,monospace">No incidents yet.</div>')+
+    '</div>'+
+    '<button class="btn-ok" id="home-log-btn">[ + Log incident ]</button>';
+  var btn = el('home-log-btn');
+  if(btn){
+    btn.addEventListener('click', function(){
+      showPane('log');
+      renderStep();
+    });
+  }
 }
 
 // ── MY LOGS: improved history with session summary + date groups ──
@@ -1247,6 +1337,7 @@ function drawBar(id,labels,data,colors){
 
 // ── WIRE EVENTS ──
 el('btn-t-signout') && el('btn-t-signout').addEventListener('click',signOut);
+el('btn-h-signout') && el('btn-h-signout').addEventListener('click',signOut);
 el('btn-th-signout') && el('btn-th-signout').addEventListener('click',signOut);
 el('btn-a-signout') && el('btn-a-signout').addEventListener('click',signOut);
 el('btn-t-switch').addEventListener('click',function(){ if(SESSION.role==='admin') goAdmin(); });
@@ -1391,6 +1482,77 @@ el('del-go-btn').addEventListener('click',function(){
     closeDelConfirm();
   });
 });
+
+
+var setupSubmitBtn = el('setup-submit');
+if (setupSubmitBtn) {
+  setupSubmitBtn.addEventListener('click', async function () {
+    var btn = this;
+    var errEl = el('setup-error');
+    var passEl = el('setup-pass');
+    var confirmEl = el('setup-confirm');
+    var pass = passEl ? passEl.value : '';
+    var confirm = confirmEl ? confirmEl.value : '';
+
+    if (errEl) errEl.textContent = '';
+
+    if (pass.length < 8) {
+      if (errEl) errEl.textContent = 'Password must be at least 8 characters';
+      return;
+    }
+    if (pass !== confirm) {
+      if (errEl) errEl.textContent = 'Passwords do not match';
+      return;
+    }
+
+    btn.textContent = '[ Activating… ]';
+    btn.disabled = true;
+
+    try {
+      var res = await fetch(SB_URL + '/auth/v1/user', {
+        method: 'PUT',
+        headers: {
+          apikey: SB_KEY,
+          Authorization: 'Bearer ' + SESSION.token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ password: pass })
+      });
+
+      if (!res.ok) throw new Error('Failed to set password');
+
+      var signIn = await fetch(SB_URL + '/auth/v1/token?grant_type=password', {
+        method: 'POST',
+        headers: {
+          apikey: SB_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email: SESSION.email, password: pass })
+      });
+
+      var data = await signIn.json();
+      if (!data.access_token) throw new Error('Sign in failed after setup');
+
+      saveSession(data.access_token, data.user && data.user.email ? data.user.email : SESSION.email, data.user && data.user.id, data.refresh_token);
+      SESSION.token = data.access_token;
+      SESSION.email = data.user && data.user.email ? data.user.email : SESSION.email;
+      SESSION.userId = data.user && data.user.id ? data.user.id : SESSION.userId;
+
+      fetchRole(SESSION.userId, function (err, role) {
+        SESSION.role = role;
+        if (role === 'admin') {
+          goAdmin();
+        } else {
+          goTeacher();
+        }
+      });
+    } catch (err) {
+      if (errEl) errEl.textContent = err.message || 'Something went wrong';
+      btn.textContent = '[ Activate account ]';
+      btn.disabled = false;
+    }
+  });
+}
 
 
 // ── SERVICE WORKER ──
