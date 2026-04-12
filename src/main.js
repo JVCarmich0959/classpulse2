@@ -961,20 +961,121 @@ function wireHeat(subjectFilter){
   });
 }
 function bCV(){
-  var conD=[{n:'Technology',a:11,p:100,l:1.9,c:45,pat:'Consistent'},{n:'PE',a:11,p:100,l:2.4,c:46,pat:'Active all year'},{n:'Art',a:11,p:100,l:3.1,c:32,pat:'Lower volume'},{n:'Music',a:4,p:36,l:6.8,c:11,pat:'Intermittent'}];
-  function pc(p){return p>=80?'var(--green)':p>=50?'var(--amber)':'var(--red)';}
-  function lc(l){return l<=2.5?'var(--green)':l<=4?'var(--amber)':'var(--red)';}
+  var rows=STATE.liveRows||[];
+  var total=rows.length;
+
+  if(!total){
+    return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
+  }
+
+  // build subject breakdown from live data
+  var subjMap={};
+  var subjWeeks={};
+  var subjChart={};
+  var subjLag=[];
+  rows.forEach(function(r){
+    var s=r.subject||r.specials||'Unknown';
+    subjMap[s]=(subjMap[s]||0)+1;
+    if(r.color_chart) subjChart[s]=(subjChart[s]||0)+1;
+    // lag: time between incident_date and created_at
+    if(r.incident_date&&r.created_at){
+      var inc=new Date(r.incident_date+'T12:00:00');
+      var cre=new Date(r.created_at);
+      var lag=(cre-inc)/(1000*3600);
+      if(lag>=0&&lag<168) subjLag.push({s:s,lag:lag});
+    }
+    // week tracking
+    if(r.incident_date){
+      var d=new Date(r.incident_date+'T12:00:00');
+      var day=d.getDay();
+      var mon=new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
+      var wk=mon.toISOString().slice(0,10);
+      if(!subjWeeks[s]) subjWeeks[s]={};
+      subjWeeks[s][wk]=1;
+    }
+  });
+
+  // get total unique weeks in dataset
+  var allWeeks={};
+  rows.forEach(function(r){
+    if(!r.incident_date) return;
+    var d=new Date(r.incident_date+'T12:00:00');
+    var day=d.getDay();
+    var mon=new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
+    allWeeks[mon.toISOString().slice(0,10)]=1;
+  });
+  var totalWks=Object.keys(allWeeks).length||1;
+
+  // avg lag per subject
+  var lagBySubj={};
+  subjLag.forEach(function(x){
+    if(!lagBySubj[x.s]) lagBySubj[x.s]={sum:0,n:0};
+    lagBySubj[x.s].sum+=x.lag;
+    lagBySubj[x.s].n++;
+  });
+
   function cc(c){return c>=60?'var(--green)':c<25?'var(--red)':'var(--amber)';}
-  return     '<div class="card" style="overflow-x:auto"><table class="ctable"><thead><tr><th>Specials</th><th>Wks</th><th>Lag</th><th>Chart</th><th>Pattern</th></tr></thead><tbody>'+
-    conD.map(function(r){return '<tr><td style="font-weight:600;color:'+(SC[r.n]||'var(--text)')+'">'+r.n+'</td>'+
-      '<td style="font-family:DM Mono,monospace">'+r.a+'/11 <span style="font-size:10px;color:'+pc(r.p)+'">'+r.p+'%</span></td>'+
-      '<td><span class="tag" style="background:'+lc(r.l)+'22;color:'+lc(r.l)+'">'+r.l+'h</span></td>'+
-      '<td><span class="tag" style="background:'+cc(r.c)+'22;color:'+cc(r.c)+'">'+r.c+'%</span></td>'+
-      '<td style="font-size:10px;font-weight:600;color:'+(r.pat==='Consistent'||r.pat==='Active all year'?'var(--green)':r.pat==='Intermittent'?'var(--red)':'var(--amber)')+'">'+r.pat+'</td></tr>';}).join('')+'</tbody></table></div>'+
-    '<div class="sec">Field completeness · 248 records</div><div class="card">'+
-    [{f:'Student name',p:100},{f:'Specials class',p:99},{f:'Behavior type',p:97},{f:'Color chart response',p:41},{f:'Home contact',p:14}].map(function(f){
-      return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+f.f+'</span><span style="font-family:DM Mono,monospace;color:'+(f.p>=90?'var(--green)':f.p>=50?'var(--amber)':'var(--red)')+'">'+f.p+'%</span></div>'+pb(f.p,f.p>=90?'var(--green)':f.p>=50?'var(--amber)':'var(--red)')+'</div>';
+  function pc(p){return p>=80?'var(--green)':p>=50?'var(--amber)':'var(--red)';}
+  function lc(l){return l<=2?'var(--green)':l<=5?'var(--amber)':'var(--red)';}
+
+  var subjects=Object.keys(subjMap).sort(function(a,b){return subjMap[b]-subjMap[a];});
+
+  var tableHtml='<div class="card" style="overflow-x:auto"><table class="ctable">'+
+    '<thead><tr>'+
+    '<th style="text-align:left">Subject</th>'+
+    '<th>Total</th>'+
+    '<th>Weeks active</th>'+
+    '<th>Avg lag</th>'+
+    '<th>Chart %</th>'+
+    '</tr></thead><tbody>'+
+    subjects.map(function(s){
+      var n=subjMap[s];
+      var wks=Object.keys(subjWeeks[s]||{}).length;
+      var wkPct=Math.round(wks/totalWks*100);
+      var lagD=lagBySubj[s];
+      var lag=lagD?parseFloat((lagD.sum/lagD.n).toFixed(1)):null;
+      var chartPct=Math.round(((subjChart[s]||0)/n)*100);
+      var color=SC[s]||'var(--text)';
+      return '<tr>'+
+        '<td style="font-weight:600;color:'+color+'">'+escHtml(s)+'</td>'+
+        '<td style="font-family:DM Mono,monospace;text-align:center">'+n+'</td>'+
+        '<td style="text-align:center"><span style="font-size:10px;color:'+pc(wkPct)+'">'+wks+'/'+totalWks+' ('+wkPct+'%)</span></td>'+
+        '<td style="text-align:center">'+(lag!==null?'<span class="tag" style="background:'+lc(lag)+'22;color:'+lc(lag)+'">'+lag+'h</span>':'<span style="color:var(--text3)">—</span>')+'</td>'+
+        '<td style="text-align:center"><span class="tag" style="background:'+cc(chartPct)+'22;color:'+cc(chartPct)+'">'+chartPct+'%</span></td>'+
+      '</tr>';
+    }).join('')+
+  '</tbody></table></div>';
+
+  // field completeness from live data
+  var hasStudent=rows.filter(function(r){return r.student&&r.student.trim();}).length;
+  var hasSubject=rows.filter(function(r){return r.subject||r.specials;}).length;
+  var hasBehavior=rows.filter(function(r){return r.behaviors&&r.behaviors.length;}).length;
+  var hasChart=rows.filter(function(r){return r.color_chart;}).length;
+  var hasHome=rows.filter(function(r){return r.home_contact;}).length;
+  var hasTime=rows.filter(function(r){return r.incident_time;}).length;
+
+  var fields=[
+    {f:'Student name',n:hasStudent},
+    {f:'Subject',n:hasSubject},
+    {f:'Behavior type',n:hasBehavior},
+    {f:'Time logged',n:hasTime},
+    {f:'Color chart response',n:hasChart},
+    {f:'Home contact',n:hasHome}
+  ];
+
+  var completenessHtml='<div class="sec">Field completeness · '+total+' records</div><div class="card">'+
+    fields.map(function(f){
+      var p=Math.round(f.n/total*100);
+      var c=p>=90?'var(--green)':p>=50?'var(--amber)':'var(--red)';
+      return '<div style="margin-bottom:10px">'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">'+
+        '<span>'+f.f+'</span>'+
+        '<span style="font-family:DM Mono,monospace;color:'+c+'">'+p+'%</span>'+
+        '</div>'+pb(p,c)+'</div>';
     }).join('')+'</div>';
+
+  return '<div class="sec">By subject · '+total+' total incidents</div>'+
+    tableHtml+completenessHtml;
 }
 function bST(live){
   var LD=live||{};
