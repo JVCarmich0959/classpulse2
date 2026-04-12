@@ -1,1 +1,1 @@
-export function renderLogin(){}
+export { initPasswordSetup } from '../main.js';
