@@ -1332,8 +1332,80 @@ el('del-go-btn').addEventListener('click',function(){
 // Service worker requires a deployed URL — skipped in single-file mode.
 // Offline support is available when deployed via Netlify/Vercel (add a sw.js file).
 
+
+// ── INVITE TOKEN HANDLER ──
+function checkInviteToken(){
+  var hash = window.location.hash;
+  if(!hash) return null;
+  var params = new URLSearchParams(hash.replace('#','?'));
+  var type = params.get('type');
+  var token = params.get('access_token');
+  if((type === 'invite' || type === 'recovery') && token) return token;
+  // Also check query string (Supabase PKCE flow)
+  var qp = new URLSearchParams(window.location.search);
+  var qtype = qp.get('type');
+  var qtoken = qp.get('access_token');
+  if((qtype === 'invite' || qtype === 'recovery') && qtoken) return qtoken;
+  return null;
+}
+
+function initPasswordSetup(token){
+  fetch(SB_URL + '/auth/v1/user', {
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token}
+  }).then(function(r){ return r.json(); })
+  .then(function(user){
+    SESSION.token = token;
+    SESSION.email = user.email;
+    history.replaceState(null,'',window.location.pathname);
+    showScreen('S-setup');
+  })
+  .catch(function(){ showScreen('S-login'); });
+}
+
 // ── INIT ──
-initLogin();
+var _inviteToken = checkInviteToken();
+if(_inviteToken){
+  initPasswordSetup(_inviteToken);
+} else {
+  initLogin();
+}
+
+// ── SETUP FORM ──
+el('setup-submit').addEventListener('click', function(){
+  var btn = el('setup-submit');
+  var errEl = el('setup-error');
+  var pass = el('setup-pass').value;
+  var confirm = el('setup-confirm').value;
+  errEl.textContent = '';
+  if(pass.length < 8){errEl.textContent='Password must be at least 8 characters';return;}
+  if(pass !== confirm){errEl.textContent='Passwords do not match';return;}
+  btn.textContent='[ Activating… ]'; btn.disabled=true;
+  fetch(SB_URL+'/auth/v1/user',{
+    method:'PUT',
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token,'Content-Type':'application/json'},
+    body:JSON.stringify({password:pass})
+  }).then(function(r){
+    if(!r.ok) throw new Error('Failed to set password');
+    return fetch(SB_URL+'/auth/v1/token?grant_type=password',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({email:SESSION.email,password:pass})
+    });
+  }).then(function(r){ return r.json(); })
+  .then(function(data){
+    if(!data.access_token) throw new Error('Sign in failed');
+    saveSession(data);
+    SESSION.token = data.access_token;
+    SESSION.email = data.user.email;
+    fetchRole(data.user.id, function(err, role){
+      if(role==='admin') goAdmin(); else goTeacher();
+    });
+  }).catch(function(err){
+    errEl.textContent = err.message||'Something went wrong';
+    btn.textContent='[ Activate account ]'; btn.disabled=false;
+  });
+});
+
 initFreshness();
 
 export {
