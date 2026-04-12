@@ -555,7 +555,7 @@ function renderHistory(){
                 '<div style="font-size:10px;color:var(--text3);margin-bottom:8px;font-family:DM Mono,monospace;letter-spacing:.04em">— no notes —</div>')+
               '<div class="log-actions">'+
                 '<button class="log-act-btn edit" data-edit="'+uid+'">[ Edit ]</button>'+
-                (isDb?'<button class="log-act-btn del" data-del="'+uid+'" data-dbid="'+(l.dbId||'')+'">[ Delete ]</button>':'')+
+                (isDb&&SESSION.role==='admin'?'<button class="log-act-btn del" data-del="'+uid+'" data-dbid="'+(l.dbId||'')+'">[ Delete ]</button>':'')+
               '</div>'+
             '</div>'+
           '</div>'+

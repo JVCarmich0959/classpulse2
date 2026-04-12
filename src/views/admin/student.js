@@ -98,33 +98,36 @@ function openStudent(name, prevScreen){
         '<div class="kpi"><div class="lbl">Top behavior</div><div class="val" style="font-size:13px">'+escHtml(topBehavior)+'</div></div>'+
       '</div>'+
       '<div class="card" style="margin-bottom:10px"><div style="font-size:11px;color:var(--text2);margin-bottom:6px">Most-logged specials class</div><div style="font-size:14px">'+escHtml(topSpecial)+'</div></div>'+
-      '<div class="card" style="margin-bottom:10px">'+
-        '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Admin notes</div>'+
-        '<textarea id="stu-notes-ta" style="width:100%;min-height:88px;background:var(--panel);border:0.5px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit"></textarea>'+
-        '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="pill" id="stu-save-note">[ Save note ]</button></div>'+
-        '<div id="stu-note-status" style="font-size:10px;color:var(--text3);margin-top:6px"></div>'+
-      '</div>'+
+      (SESSION.role==='admin' ?
+        '<div class="card" style="margin-bottom:10px">'+
+          '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Admin notes</div>'+
+          '<textarea id="stu-notes-ta" style="width:100%;min-height:88px;background:var(--panel);border:0.5px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit"></textarea>'+
+          '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="pill" id="stu-save-note">[ Save note ]</button></div>'+
+          '<div id="stu-note-status" style="font-size:10px;color:var(--text3);margin-top:6px"></div>'+
+        '</div>'
+      : '')+
       '<div class="sec" style="display:flex;justify-content:space-between;align-items:center">All incidents</div>'+
       '<div id="stu-inc-list"></div>';
 
-    fetchStudentNote(name, function(_e, note){
-      var ta = document.getElementById('stu-notes-ta');
-      if(ta) ta.value = note || '';
-    });
-
-    var saveBtn = document.getElementById('stu-save-note');
-    if(saveBtn){
-      saveBtn.addEventListener('click', function(){
+    if(SESSION.role==='admin'){
+      fetchStudentNote(name, function(_e, note){
         var ta = document.getElementById('stu-notes-ta');
-        var st = document.getElementById('stu-note-status');
-        saveBtn.disabled = true;
-        saveBtn.textContent = '[ Saving… ]';
-        saveStudentNote(name, ta ? ta.value : '', function(e2){
-          saveBtn.disabled = false;
-          saveBtn.textContent = '[ Save note ]';
-          if(st) st.textContent = e2 ? 'Save failed' : 'Saved';
-        });
+        if(ta) ta.value = note || '';
       });
+      var saveBtn = document.getElementById('stu-save-note');
+      if(saveBtn){
+        saveBtn.addEventListener('click', function(){
+          var ta = document.getElementById('stu-notes-ta');
+          var st = document.getElementById('stu-note-status');
+          saveBtn.disabled = true;
+          saveBtn.textContent = '[ Saving… ]';
+          saveStudentNote(name, ta ? ta.value : '', function(e2){
+            saveBtn.disabled = false;
+            saveBtn.textContent = '[ Save note ]';
+            if(st) st.textContent = e2 ? 'Save failed' : 'Saved';
+          });
+        });
+      }
     }
 
     var listEl = document.getElementById('stu-inc-list');
