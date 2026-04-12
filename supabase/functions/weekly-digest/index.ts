@@ -43,14 +43,7 @@ Deno.serve(async (_req: Request) => {
 
   const subject = `ClassPulse Weekly Digest — ${total} incidents (${weekAgoStr})`;
   const from = 'ClassPulse <digest@classpulse.waynestem.org>';
-  const html = `<body><table width="100%" cellpadding="0" cellspacing="0">
-<tr><td align="center" style="padding:20px 0 0">
-  <img src="https://classpulse2.netlify.app/favicon.svg"
-    width="64" height="64"
-    alt="ClassPulse"
-    style="display:block"/>
-</td></tr>
-</table><div style="background:#060a0f;color:#d9fff8;padding:24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace"><h1 style="margin:0 0 8px;color:#00e6c8">ClassPulse Weekly Digest</h1><p style="margin:0 0 16px;color:#8adfd2">Since ${weekAgoStr}</p><div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"><div style="border:1px solid #13423b;padding:10px 12px">Total: <b>${total}</b></div><div style="border:1px solid #13423b;padding:10px 12px">Chart: <b>${Math.round((chartY/total)*100)}%</b></div><div style="border:1px solid #13423b;padding:10px 12px">Home: <b>${Math.round((homeY/total)*100)}%</b></div></div><h3 style="color:#00e6c8">Top behaviors</h3><ul>${topBehs.map(([k,v]) => `<li>${k}: ${v}</li>`).join('')}</ul><h3 style="color:#00e6c8">Top students</h3><ul>${topStus.map(([k,v]) => `<li>${k}: ${v}</li>`).join('')}</ul><h3 style="color:#00e6c8">Top classrooms</h3><ul>${topCls.map(([k,v]) => `<li>${k}: ${v}</li>`).join('')}</ul></div></body>`;
+  const html = `<div style="background:#060a0f;color:#d9fff8;padding:24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace"><h1 style="margin:0 0 8px;color:#00e6c8">ClassPulse Weekly Digest</h1><p style="margin:0 0 16px;color:#8adfd2">Since ${weekAgoStr}</p><div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"><div style="border:1px solid #13423b;padding:10px 12px">Total: <b>${total}</b></div><div style="border:1px solid #13423b;padding:10px 12px">Chart: <b>${Math.round((chartY/total)*100)}%</b></div><div style="border:1px solid #13423b;padding:10px 12px">Home: <b>${Math.round((homeY/total)*100)}%</b></div></div><h3 style="color:#00e6c8">Top behaviors</h3><ul>${topBehs.map(([k,v]) => `<li>${k}: ${v}</li>`).join('')}</ul><h3 style="color:#00e6c8">Top students</h3><ul>${topStus.map(([k,v]) => `<li>${k}: ${v}</li>`).join('')}</ul><h3 style="color:#00e6c8">Top classrooms</h3><ul>${topCls.map(([k,v]) => `<li>${k}: ${v}</li>`).join('')}</ul></div>`;
 
   if (!RESEND_API_KEY) {
     return new Response(JSON.stringify({ total, topBehs, topStus, topCls,
