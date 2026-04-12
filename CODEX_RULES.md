@@ -104,3 +104,28 @@ in src/main.js. It must NEVER be declared again in main.js.
 Before touching auth or session code, run:
   grep -rn "function checkInviteToken" src/
 If it appears in more than one file, remove the duplicate in main.js.EOF
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. TOKEN REFRESH ON SESSION RESTORE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The app uses localStorage (not sessionStorage) to persist sessions.
+Supabase access tokens expire after 1 hour. Always call refreshSession()
+BEFORE fetchRole() in the session restore block — never after. A stale
+token causes 401s on all API calls even though the session appears valid.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. SUBJECT-TO-TEACHER MAP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SUBJECT_TEACHER maps specials subjects to teacher names for historical
+records. Do not hardcode new entries — update this map when teachers change.
+  PE → Mrs. Offield
+  Technology → Ms. Carmichael
+  Art → Mrs. Ali
+  Music → Mrs. Groff
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11. NEVER RUN PATCH SCRIPTS MORE THAN ONCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Python patch scripts are not idempotent. Running them twice duplicates
+functions and breaks the build. Always verify with grep before running
+a patch, and always check the output for "ERROR" before building.
