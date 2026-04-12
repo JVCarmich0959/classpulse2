@@ -164,6 +164,41 @@ var HOMEROOMS=ALL_CLASSES;
 var SER=['#00e6c8','#f0c040','#ff4466','#a78bfa','#34d399','#f97316','#60a5fa','#4d6490'];
 var SC={'PE':'#00e6c8','Technology':'#a78bfa','Art':'#f0c040','Music':'#ff4466','P.E.':'#00e6c8'};
 
+
+
+
+
+function loadDisplayNames(emails, cb){
+  if(!emails||!emails.length){ if(cb) cb(); return; }
+  var unique=emails.filter(function(e,i,a){ return e&&a.indexOf(e)===i; });
+  fetch(SB_URL+'/rest/v1/profiles?select=email,display_name&email=in.('+unique.map(encodeURIComponent).join(',')+')',{
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token}
+  }).then(function(r){return r.json();}).then(function(rows){
+    if(Array.isArray(rows)) rows.forEach(function(r){
+      if(r.email&&r.display_name) DISPLAY_CACHE[r.email]=r.display_name;
+    });
+    if(cb) cb();
+  }).catch(function(){ if(cb) cb(); });
+}
+
+
+
+
+
+
+var DISPLAY_CACHE={};
+
+function emailToDisplayName(email){
+  if(!email) return '';
+  if(DISPLAY_CACHE[email]) return DISPLAY_CACHE[email];
+  var local=email.split('@')[0]||'';
+  var parts=local.split('.');
+  var last=parts[parts.length-1]||'';
+  var name='Ms. '+last.charAt(0).toUpperCase()+last.slice(1);
+  return name;
+}
+
+
 var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login'};
 var STU_PREV_SCREEN='S-detail';
 function setStuPrevScreen(v){ STU_PREV_SCREEN=v||'S-detail'; }
@@ -1334,7 +1369,7 @@ function renderIncidentList(rows, container, onAfterEdit){
         var behs=r.behaviors||[];
         var hasNotes=r.notes&&r.notes.trim().length>0;
         var submitter=r.submitted_by&&r.submitted_by!=='import@waynestem.org'?
-          '<span style="font-size:9px;color:var(--text3);font-family:DM Mono,monospace;margin-left:4px">'+r.submitted_by.split('@')[0]+'</span>':'';
+          '<span style="font-size:9px;color:var(--text3);font-family:DM Mono,monospace;margin-left:4px">'+emailToDisplayName(r.submitted_by||'')+'</span>':'';
         return '<div class="log-item" data-uid="'+uid+'">'+
           '<div class="log-hdr" data-toggle="'+uid+'">'+
             '<div class="log-name">'+stuNameLink(r.student||'—')+submitter+
