@@ -216,8 +216,10 @@ function emailToDisplayName(email){
 
 var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login'};
 var STU_PREV_SCREEN='S-detail';
+var DET_PREV_SCREEN='S-classes';
 function setStuPrevScreen(v){ STU_PREV_SCREEN=v||'S-detail'; }
 function getStuPrevScreen(){ return STU_PREV_SCREEN||'S-detail'; }
+function setDetPrevScreen(v){ DET_PREV_SCREEN=v||'S-classes'; }
 function todayStr(){return new Date().toISOString().split('T')[0];}
 function nowStr(){var d=new Date();return d.toTimeString().slice(0,5);}
 function freshEntry(){return{studentName:'',homeroom:'',specials:'',behaviors:[],date:todayStr(),time:nowStr(),colorChart:false,homeContact:false,notes:''};}
@@ -1417,7 +1419,7 @@ function renderClsExplorer(live){
   });
   // card clicks
   el('cls-cards').querySelectorAll('[data-cls]').forEach(function(card){
-    card.addEventListener('click',(function(k){return function(){openDet(k,liveArg);};})(card.dataset.cls));
+    card.addEventListener('click',(function(k){return function(){setDetPrevScreen('S-classes');openDet(k,liveArg);};})(card.dataset.cls));
   });
 }
 
@@ -1579,6 +1581,8 @@ function openDet(id,live){
   var LD=live||{};
   var c=(LD.classrooms&&LD.classrooms[id])||D.classrooms[id];
   var isZero=!c||c.total===0;
+  var backBtn=el('btn-det-back');
+  if(backBtn) backBtn.textContent=DET_PREV_SCREEN==='S-teacher'?'‹ My Logs':'‹ Classes';
   el('det-title').textContent=id;
   el('det-sub').textContent=isZero?'No incidents logged':c.total+' incidents · Chart: '+c.chart+'% · Home: '+c.home+'%';
 
@@ -1762,7 +1766,17 @@ el('btn-export') && el('btn-export').addEventListener('click',exportCSV);
 el('AN-classes').addEventListener('click',function(){ if(SESSION.role!=='admin') return; STATE.clsFilter='all';showScreen('S-classes');renderClsExplorer(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);});
 el('AN-log').addEventListener('click',goTeacher);
 el('btn-cls-back').addEventListener('click',function(){showScreen('S-admin',true);});
-el('btn-det-back').addEventListener('click',function(){showScreen('S-classes',true);var live=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;renderClsExplorer(live);});
+el('btn-det-back').addEventListener('click',function(){
+  if(DET_PREV_SCREEN==='S-teacher'){
+    showScreen('S-teacher',true);
+    showPane('hist');
+    renderHistory();
+    return;
+  }
+  showScreen('S-classes',true);
+  var live=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;
+  renderClsExplorer(live);
+});
 el('btn-stu-back') && el('btn-stu-back').addEventListener('click',function(){
   var live=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;
   if(getStuPrevScreen()==='S-classes'){
