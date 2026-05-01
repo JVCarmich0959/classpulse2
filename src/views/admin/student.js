@@ -1,5 +1,5 @@
 import { SB_URL, SB_KEY } from '../../config.js';
-import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard } from '../../main.js';
+import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard, displayBehavior } from '../../main.js';
 
 function fetchStudentNote(name, cb){
   if(!SESSION.token){ if(cb) cb(new Error('not authenticated'), ''); return; }
@@ -110,7 +110,7 @@ function openStudent(name, prevScreen){
     var behCounts = {};
     var spCounts = {};
     rows.forEach(function(r){
-      (r.behaviors||[]).forEach(function(bh){ behCounts[bh]=(behCounts[bh]||0)+1; });
+      (r.behaviors||[]).forEach(function(bh){ var mapped=displayBehavior(bh); behCounts[mapped]=(behCounts[mapped]||0)+1; });
       if(r.specials) spCounts[r.specials]=(spCounts[r.specials]||0)+1;
     });
     var topBehavior = Object.keys(behCounts).sort(function(a,b){ return behCounts[b]-behCounts[a]; })[0] || '—';

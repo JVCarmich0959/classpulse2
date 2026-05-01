@@ -148,7 +148,32 @@ var BAND_LABELS = {
   'EC':'Exceptional Children'
 };
 
-var BEHAVIORS=['Verbal disruption','Noncompliance','Off-task','Emotional distress','Peer conflict','Physical behavior','Out of seat','Device misuse','Sleeping/disengaged'];
+var BEHAVIORS=['Disrupting learning environment','Disrespect or defiance','Noncompliance','Inappropriate language','Diminished participation','Deception / Lying','Rough Housing / Horseplay','Defacing School Property','Petty Theft','Out of Assigned Area','Inappropriate Touching','Sleeping/disengaged','Other'];
+var MOTIVATIONS=['Attention','Power','Revenge','Avoidance'];
+var CONTACT_METHODS=['Phone','Class Dojo','Email','IC Message'];
+var BEHAVIOR_DISPLAY_MAP={
+  'Verbal disruption':'Disrupting learning environment',
+  'Disrupting learning environment':'Disrupting learning environment',
+  'Off-task':'Diminished participation',
+  'Diminished participation':'Diminished participation',
+  'Out of seat':'Out of Assigned Area',
+  'Out of Assigned Area':'Out of Assigned Area',
+  'Physical behavior':'Rough Housing / Horseplay',
+  'Rough Housing / Horseplay':'Rough Housing / Horseplay',
+  'Peer conflict':'Disrespect or defiance',
+  'Disrespect or defiance':'Disrespect or defiance',
+  'Emotional distress':'Other',
+  'Other':'Other',
+  'Device misuse':'Disrupting learning environment',
+  'Noncompliance':'Noncompliance',
+  'Sleeping/disengaged':'Sleeping/disengaged',
+  'Inappropriate language':'Inappropriate language',
+  'Deception / Lying':'Deception / Lying',
+  'Defacing School Property':'Defacing School Property',
+  'Petty Theft':'Petty Theft',
+  'Inappropriate Touching':'Inappropriate Touching'
+};
+function displayBehavior(tag){ return BEHAVIOR_DISPLAY_MAP[tag]||tag; }
 var SUBJECTS_SPECIALS=['PE','Technology','Art','Music'];
 var SUBJECTS_HOMEROOM=['Block 1','Block 2','Block 3','Lunch','Block 4','Block 5','Block 6','Reading','Math','Science','Small Group','Other'];
 var SUBJECTS_IA=['PE','Technology','Art','Music','Block 1','Block 2','Block 3','Lunch','Block 4','Block 5','Block 6','Reading','Math','Science','Small Group','Other'];
@@ -222,7 +247,7 @@ function getStuPrevScreen(){ return STU_PREV_SCREEN||'S-detail'; }
 function setDetPrevScreen(v){ DET_PREV_SCREEN=v||'S-classes'; }
 function todayStr(){return new Date().toISOString().split('T')[0];}
 function nowStr(){var d=new Date();return d.toTimeString().slice(0,5);}
-function freshEntry(){return{studentName:'',homeroom:'',specials:'',behaviors:[],date:todayStr(),time:nowStr(),colorChart:false,homeContact:false,notes:''};}
+function freshEntry(){return{studentName:'',homeroom:'',specials:'',behaviors:[],date:todayStr(),time:nowStr(),colorChart:false,homeContact:false,motivation:'',contactMethod:'',notes:''};}
 function el(id){return document.getElementById(id);}
 function pb(pct,col){return '<div class="pbar"><div style="--pw:'+Math.min(pct,100)+'%;background:'+col+'" class="pfill"></div></div>';}
 var INSTALL_PROMPT_EVENT=null;
@@ -448,7 +473,7 @@ function showPane(pane){
 }
 
 // ── STEP FORM ──
-var SLBL=['Step 1 of 4 · Student & class','Step 2 of 4 · Behavior type','Step 3 of 4 · Timing','Step 4 of 4 · Response & notes'];
+var SLBL=['Step 1 of 4 · Scholar & class','Step 2 of 4 · Behavior type','Step 3 of 4 · Timing','Step 4 of 4 · Response & notes'];
 function renderStep(){
   el('step-lbl').textContent=SLBL[STATE.step];
   el('step-dots').innerHTML=SLBL.map(function(_,i){return '<div class="dot '+(i<STATE.step?'done':i===STATE.step?'active':'')+'"></div>';}).join('');
@@ -463,7 +488,7 @@ function bS1(){
   var opts=HOMEROOMS.map(function(h){return '<option value="'+h+'"'+(STATE.entry.homeroom===h?' selected':'')+'>'+h+'</option>';}).join('');
   var chips=getSubjects().map(function(s){return '<button type="button" class="chip'+(STATE.entry.specials===s?' on':'')+'" data-sp="'+s+'">'+s+'</button>';}).join('');
   return '<div style="padding:2px 0 14px"><h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Who is this about?</h3>'+
-    '<div class="fg"><label class="fl">Student name <span class="req">*</span></label><input type="text" id="f-name" placeholder="First Last" value="'+STATE.entry.studentName+'" autocomplete="off"></div>'+
+    '<div class="fg"><label class="fl">Scholar name <span class="req">*</span></label><input type="text" id="f-name" placeholder="First Last" value="'+STATE.entry.studentName+'" autocomplete="off"></div>'+
     '<div class="fg"><label class="fl">Homeroom class <span class="req">*</span></label><select id="f-hr"><option value="">Select homeroom...</option>'+opts+'</select></div>'+
     '<div class="fg"><label class="fl">'+(SESSION.role==="homeroom"||SESSION.role==="ia"?"Subject / context":"Your class")+' <span class="req">*</span></label><div class="chips" id="sp-chips">'+chips+'</div></div>'+
     '<button type="button" class="btn-p" id="s1-next">Next →</button></div>';
@@ -489,8 +514,10 @@ function bS4(){
     '<div class="tog-row"><div><div class="tog-lbl">Home contacted</div><div class="tog-sub">Parent or guardian notified</div></div>'+
     '<label class="tog"><input type="checkbox" id="f-home"'+(STATE.entry.homeContact?' checked':'')+'>'+
     '<div class="tog-track"></div><div class="tog-thumb"></div></label></div></div>'+
+    '<div class="fg"><label class="fl">Possible Motivation <span style="font-size:11px;color:var(--text3)">(optional)</span></label><div class="chips">'+MOTIVATIONS.map(function(m){return '<button type="button" class="chip'+(STATE.entry.motivation===m?' on':'')+'" data-mot="'+m+'">'+m+'</button>';}).join('')+'</div></div>'+
+    (STATE.entry.homeContact?'<div class="fg"><label class="fl">Parent Contact Method <span style="font-size:11px;color:var(--text3)">(optional)</span></label><div class="chips">'+CONTACT_METHODS.map(function(c){return '<button type="button" class="chip'+(STATE.entry.contactMethod===c?' on':'')+'" data-contact="'+c+'">'+c+'</button>';}).join('')+'</div></div>':'')+
     '<div class="fg"><label class="fl">Additional notes <span style="font-size:11px;color:var(--text3)">(optional)</span></label>'+
-    '<textarea id="f-notes" placeholder="Context, what was tried, follow-up needed...">'+STATE.entry.notes+'</textarea></div>'+
+    '<textarea id="f-notes" placeholder="A — Antecedent: what triggered the behavior?\nB — Behavior: what did the scholar do?\nC — Consequence: what was the immediate result?">'+STATE.entry.notes+'</textarea></div>'+
     '<div class="brow"><button type="button" class="btn-s" id="s4-back">← Back</button><button type="button" class="btn-ok" id="s4-sub">✓ Submit log</button></div></div>';
 }
 function attachSL(){
@@ -498,7 +525,7 @@ function attachSL(){
   var fhr=el('f-hr');if(fhr)fhr.addEventListener('change',function(){STATE.entry.homeroom=fhr.value;});
   document.querySelectorAll('[data-sp]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.specials=btn.dataset.sp;document.querySelectorAll('[data-sp]').forEach(function(b){b.classList.toggle('on',b.dataset.sp===STATE.entry.specials);});});});
   var s1n=el('s1-next');
-  if(s1n)s1n.addEventListener('click',function(){if(!STATE.entry.studentName.trim()||!STATE.entry.homeroom||!STATE.entry.specials){alert('Please fill in student name, homeroom, and subject.');return;}STATE.step=1;renderStep();});
+  if(s1n)s1n.addEventListener('click',function(){if(!STATE.entry.studentName.trim()||!STATE.entry.homeroom||!STATE.entry.specials){alert('Please fill in scholar name, homeroom, and subject.');return;}STATE.step=1;renderStep();});
   document.querySelectorAll('[data-beh]').forEach(function(btn){btn.addEventListener('click',function(){var b=btn.dataset.beh,idx=STATE.entry.behaviors.indexOf(b);if(idx>=0)STATE.entry.behaviors.splice(idx,1);else STATE.entry.behaviors.push(b);document.querySelectorAll('[data-beh]').forEach(function(c){c.classList.toggle('on',STATE.entry.behaviors.indexOf(c.dataset.beh)>=0);});});});
   var s2b=el('s2-back');if(s2b)s2b.addEventListener('click',function(){STATE.step=0;renderStep();});
   var s2n=el('s2-next');if(s2n)s2n.addEventListener('click',function(){if(!STATE.entry.behaviors.length){alert('Please select at least one behavior type.');return;}STATE.step=2;renderStep();});
@@ -508,15 +535,21 @@ function attachSL(){
   var s3n=el('s3-next');if(s3n)s3n.addEventListener('click',function(){STATE.step=3;renderStep();});
   var fc=el('f-chart');if(fc)fc.addEventListener('change',function(){STATE.entry.colorChart=fc.checked;});
   var fh=el('f-home');if(fh)fh.addEventListener('change',function(){STATE.entry.homeContact=fh.checked;});
+  document.querySelectorAll('[data-mot]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.motivation=STATE.entry.motivation===btn.dataset.mot?'':btn.dataset.mot;renderStep();});});
+  document.querySelectorAll('[data-contact]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.contactMethod=STATE.entry.contactMethod===btn.dataset.contact?'':btn.dataset.contact;renderStep();});});
   var fn2=el('f-notes');if(fn2)fn2.addEventListener('input',function(){STATE.entry.notes=fn2.value;});
   var s4b=el('s4-back');if(s4b)s4b.addEventListener('click',function(){STATE.step=3;renderStep();});
   var sub=el('s4-sub');
   if(sub)sub.addEventListener('click',function(){
     var e=STATE.entry;
-    var row={student:e.studentName,homeroom:e.homeroom,specials:e.specials,subject:e.specials,teacher_role:SESSION.role||'specials',behaviors:e.behaviors.slice(),incident_date:e.date||null,incident_time:e.time||null,color_chart:e.colorChart,home_contact:e.homeContact,notes:e.notes||null,submitted_by:SESSION.email||'specials-team'};
+    var extra=[];
+    if(e.motivation) extra.push('Motivation: '+e.motivation);
+    if(e.homeContact&&e.contactMethod) extra.push('Contact method: '+e.contactMethod);
+    var fullNotes=((e.notes||'').trim()+(extra.length?('\n'+extra.join('\n')):'')).trim();
+    var row={student:e.studentName,homeroom:e.homeroom,specials:e.specials,subject:e.specials,teacher_role:SESSION.role||'specials',behaviors:e.behaviors.slice(),incident_date:e.date||null,incident_time:e.time||null,color_chart:e.colorChart,home_contact:e.homeContact,notes:fullNotes||null,submitted_by:SESSION.email||'specials-team'};
     var log=Object.assign({},row,{studentName:e.studentName,colorChart:e.colorChart,homeContact:e.homeContact,date:e.date,time:e.time,id:Date.now()});
     STATE.logs.unshift(log);
-    el('sheet-detail').textContent=e.studentName+' · '+e.specials+' · '+(e.behaviors.length?e.behaviors.join(', '):'—');
+    el('sheet-detail').textContent=e.studentName+' · '+e.specials+' · '+(e.behaviors.length?e.behaviors.map(displayBehavior).join(', '):'—');
     el('T-sheet').classList.add('show');el('T-overlay').classList.add('show');
     authedInsert(row).catch(function(err){console.warn('Supabase insert failed',err);});
   });
@@ -589,7 +622,7 @@ function renderHistory(){
   var maxStu=topStus.length?topStus[0].n:1;
 
   var behMap={};
-  allLogs.forEach(function(l){(l.behaviors||[]).forEach(function(b){behMap[b]=(behMap[b]||0)+1;});});
+  allLogs.forEach(function(l){(l.behaviors||[]).forEach(function(b){var m=displayBehavior(b);behMap[m]=(behMap[m]||0)+1;});});
   var topBehs=Object.keys(behMap).map(function(k){return{name:k,n:behMap[k]};}).sort(function(a,b){return b.n-a.n;}).slice(0,5);
   var maxBeh=topBehs.length?topBehs[0].n:1;
 
@@ -863,7 +896,7 @@ function buildLiveStats(rows){
   var behCounts = {};
   rows.forEach(function(r){
     var behs = r.behaviors || [];
-    behs.forEach(function(b){behCounts[b]=(behCounts[b]||0)+1;});
+    behs.forEach(function(b){var mapped=displayBehavior(b);behCounts[mapped]=(behCounts[mapped]||0)+1;});
     if(!behs.length) behCounts['Unspecified']=(behCounts['Unspecified']||0)+1;
   });
   var behaviors = Object.keys(behCounts).sort(function(a,b){return behCounts[b]-behCounts[a];}).map(function(k){return{t:k,n:behCounts[k]};});
@@ -915,7 +948,7 @@ function buildLiveStats(rows){
     c.total++;
     if(r.color_chart) c.chartY++;
     if(r.home_contact) c.homeY++;
-    (r.behaviors||[]).forEach(function(b){c.behCounts[b]=(c.behCounts[b]||0)+1;});
+    (r.behaviors||[]).forEach(function(b){var mapped=displayBehavior(b);c.behCounts[mapped]=(c.behCounts[mapped]||0)+1;});
     if(r.specials) c.spCounts[r.specials]=(c.spCounts[r.specials]||0)+1;
     if(r.student) c.stuCounts[r.student]=(c.stuCounts[r.student]||0)+1;
     var d=new Date((r.incident_date||r.created_at||'').slice(0,10)+'T12:00:00');
@@ -1016,7 +1049,7 @@ function bOV(live){
     '</div></div>'+
     '<div class="sec">Incidents by grade</div><div class="card"><canvas id="c-gr" height="100" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">Behavior types <span style="font-weight:400;color:var(--text3);font-size:10px;text-transform:none;letter-spacing:0">(tagged incidents · multi-select)</span></div><div class="card">'+
-    (LD.behaviors||D.behaviors).map(function(b,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+b.t+'</span><span style="font-family:DM Mono,monospace;color:'+(b.t==='Unspecified'?'var(--text3)':'var(--text2)')+'">'+b.n+'</span></div>'+pb((b.n/76)*100,b.t==='Unspecified'?'var(--text3)':SER[i%SER.length])+'</div>';}).join('')+'</div>'+
+    (LD.behaviors||D.behaviors).map(function(b,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+displayBehavior(b.t)+'</span><span style="font-family:DM Mono,monospace;color:'+(b.t==='Unspecified'?'var(--text3)':'var(--text2)')+'">'+b.n+'</span></div>'+pb((b.n/76)*100,b.t==='Unspecified'?'var(--text3)':SER[i%SER.length])+'</div>';}).join('')+'</div>'+
     '<div class="sec">By subject</div><div class="card">'+
     (function(){
       var specList=LD.specials&&LD.specials.length?LD.specials:[];
@@ -1341,7 +1374,7 @@ function bCV(){
   var hasTime=rows.filter(function(r){return r.incident_time;}).length;
 
   var fields=[
-    {f:'Student name',n:hasStudent},
+    {f:'Scholar name',n:hasStudent},
     {f:'Subject',n:hasSubject},
     {f:'Behavior type',n:hasBehavior},
     {f:'Time logged',n:hasTime},
@@ -1655,7 +1688,7 @@ function openDet(id,live){
     kpiH('Home contact',c.home+'%','',c.home===0)+
     '<div class="kpi"><div class="lbl">Subjects logged</div><div class="val">'+Object.keys(c.specials).filter(function(k){return c.specials[k]>0;}).length+'</div></div></div>'+
     '<div class="sec">Behavior types</div><div class="card">'+
-    c.behaviors.map(function(b,i){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+b.t+'</span><span style="font-family:DM Mono,monospace">'+b.n+'</span></div>'+pb((b.n/mxB)*100,SER[i%SER.length])+'</div>';}).join('')+'</div>'+
+    c.behaviors.map(function(b,i){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+displayBehavior(b.t)+'</span><span style="font-family:DM Mono,monospace">'+b.n+'</span></div>'+pb((b.n/mxB)*100,SER[i%SER.length])+'</div>';}).join('')+'</div>'+
     '<div class="sec">Students</div><div class="card">'+
     c.students.map(function(s){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+(s.name==='Other'?'var(--text2)':'var(--text)')+'">'+stuNameLink(s.name)+'</span><span style="font-family:DM Mono,monospace;color:'+(s.n>=5?'var(--red)':s.n>=3?'var(--amber)':'var(--text2)')+'">'+s.n+'</span></div>'+pb((s.n/mxS)*100,s.name==='Other'?'var(--text3)':s.n>=5?'var(--red)':s.n>=3?'var(--amber)':'var(--accent)')+'</div>';}).join('')+'</div>'+
     '<div class="sec">By subject</div><div class="card">'+
@@ -1855,7 +1888,7 @@ el('es-save').addEventListener('click',function(){
     home_contact:el('es-home').checked,
     notes:el('es-notes').value.trim()||null
   };
-  if(!updates.student){status.textContent='Student name required';status.style.color='var(--red)';return;}
+  if(!updates.student){status.textContent='Scholar name required';status.style.color='var(--red)';return;}
 
   function resetBtn(){saveBtn.textContent='[ Save changes ]';saveBtn.disabled=false;}
   function onSaved(){
@@ -2022,5 +2055,5 @@ export {
   renderStep, goTeacher, showPane, closeSheet, renderHistory, fetchMyLogs,
   goAdmin, renderAdmin, setTab, bOV, bTM, bCV, bST, bCL,
   renderClsExplorer, filterClasses, openDet, showScreen, escHtml,
-  openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen
+  openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen, displayBehavior
 };
