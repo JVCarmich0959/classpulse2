@@ -153,14 +153,25 @@ var MOTIVATIONS=['Attention','Power','Revenge','Avoidance'];
 var CONTACT_METHODS=['Phone','Class Dojo','Email','IC Message'];
 var BEHAVIOR_DISPLAY_MAP={
   'Verbal disruption':'Disrupting learning environment',
+  'Disrupting learning environment':'Disrupting learning environment',
   'Off-task':'Diminished participation',
+  'Diminished participation':'Diminished participation',
   'Out of seat':'Out of Assigned Area',
+  'Out of Assigned Area':'Out of Assigned Area',
   'Physical behavior':'Rough Housing / Horseplay',
+  'Rough Housing / Horseplay':'Rough Housing / Horseplay',
   'Peer conflict':'Disrespect or defiance',
+  'Disrespect or defiance':'Disrespect or defiance',
   'Emotional distress':'Other',
+  'Other':'Other',
   'Device misuse':'Disrupting learning environment',
   'Noncompliance':'Noncompliance',
-  'Sleeping/disengaged':'Sleeping/disengaged'
+  'Sleeping/disengaged':'Sleeping/disengaged',
+  'Inappropriate language':'Inappropriate language',
+  'Deception / Lying':'Deception / Lying',
+  'Defacing School Property':'Defacing School Property',
+  'Petty Theft':'Petty Theft',
+  'Inappropriate Touching':'Inappropriate Touching'
 };
 function displayBehavior(tag){ return BEHAVIOR_DISPLAY_MAP[tag]||tag; }
 var SUBJECTS_SPECIALS=['PE','Technology','Art','Music'];
@@ -611,7 +622,7 @@ function renderHistory(){
   var maxStu=topStus.length?topStus[0].n:1;
 
   var behMap={};
-  allLogs.forEach(function(l){(l.behaviors||[]).forEach(function(b){behMap[b]=(behMap[b]||0)+1;});});
+  allLogs.forEach(function(l){(l.behaviors||[]).forEach(function(b){var m=displayBehavior(b);behMap[m]=(behMap[m]||0)+1;});});
   var topBehs=Object.keys(behMap).map(function(k){return{name:k,n:behMap[k]};}).sort(function(a,b){return b.n-a.n;}).slice(0,5);
   var maxBeh=topBehs.length?topBehs[0].n:1;
 
@@ -885,7 +896,7 @@ function buildLiveStats(rows){
   var behCounts = {};
   rows.forEach(function(r){
     var behs = r.behaviors || [];
-    behs.forEach(function(b){behCounts[b]=(behCounts[b]||0)+1;});
+    behs.forEach(function(b){var mapped=displayBehavior(b);behCounts[mapped]=(behCounts[mapped]||0)+1;});
     if(!behs.length) behCounts['Unspecified']=(behCounts['Unspecified']||0)+1;
   });
   var behaviors = Object.keys(behCounts).sort(function(a,b){return behCounts[b]-behCounts[a];}).map(function(k){return{t:k,n:behCounts[k]};});
@@ -937,7 +948,7 @@ function buildLiveStats(rows){
     c.total++;
     if(r.color_chart) c.chartY++;
     if(r.home_contact) c.homeY++;
-    (r.behaviors||[]).forEach(function(b){c.behCounts[b]=(c.behCounts[b]||0)+1;});
+    (r.behaviors||[]).forEach(function(b){var mapped=displayBehavior(b);c.behCounts[mapped]=(c.behCounts[mapped]||0)+1;});
     if(r.specials) c.spCounts[r.specials]=(c.spCounts[r.specials]||0)+1;
     if(r.student) c.stuCounts[r.student]=(c.stuCounts[r.student]||0)+1;
     var d=new Date((r.incident_date||r.created_at||'').slice(0,10)+'T12:00:00');
@@ -2044,5 +2055,5 @@ export {
   renderStep, goTeacher, showPane, closeSheet, renderHistory, fetchMyLogs,
   goAdmin, renderAdmin, setTab, bOV, bTM, bCV, bST, bCL,
   renderClsExplorer, filterClasses, openDet, showScreen, escHtml,
-  openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen
+  openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen, displayBehavior
 };
