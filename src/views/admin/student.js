@@ -95,7 +95,7 @@ function openStudent(name, prevScreen){
   var body = document.getElementById('stu-body');
   if(title) title.textContent = 'Loading…';
   if(sub) sub.textContent = 'Loading…';
-  if(body) body.innerHTML = '<div style="text-align:center;padding:24px 0;font-size:11px;color:var(--text3);letter-spacing:.06em">Loading student profile…</div>';
+  if(body) body.innerHTML = '<div style="text-align:center;padding:24px 0;font-size:11px;color:var(--text3);letter-spacing:.06em">Loading scholar profile…</div>';
   showScreen('S-student');
 
   fetchStudentIncidents(name, function(err, rows){
@@ -116,7 +116,7 @@ function openStudent(name, prevScreen){
     var topBehavior = Object.keys(behCounts).sort(function(a,b){ return behCounts[b]-behCounts[a]; })[0] || '—';
     var topSpecial = Object.keys(spCounts).sort(function(a,b){ return spCounts[b]-spCounts[a]; })[0] || '—';
 
-    if(title) title.textContent = name || 'Student';
+    if(title) title.textContent = name || 'Scholar';
     if(sub) sub.textContent = total + ' incidents';
 
     body.innerHTML =
@@ -138,7 +138,10 @@ function openStudent(name, prevScreen){
         '</div>'
       : '')+
       '<div class="sec" style="display:flex;justify-content:space-between;align-items:center">All incidents <span id="stu-inc-meta" style="font-size:10px;color:var(--text3);font-family:DM Mono,monospace"></span></div>'+
-      '<div id="stu-inc-list"></div>';
+      '<div id="stu-inc-list"></div>'+
+      '<div style="margin:14px 0;border-top:0.5px solid var(--border)"></div>'+
+      '<div class="sec">First Aid / Injury Log</div>'+
+      '<div id="stu-first-aid"></div>';
 
     if(SESSION.role==='admin'){
       fetchStudentNote(name, function(_e, note){
@@ -211,6 +214,30 @@ function openStudent(name, prevScreen){
     });
     renderStudentList(rows);
     wireStudentLinks(body, 'S-student');
+    fetch(SB_URL + '/rest/v1/first_aid_log?student=eq.' + encodeURIComponent(name) + '&select=*&order=incident_date.desc,created_at.desc&limit=100', {
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token}
+    }).then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    }).then(function(faRows){
+      var wrap=document.getElementById('stu-first-aid');
+      if(!wrap) return;
+      if(!faRows || !faRows.length){
+        wrap.innerHTML='<div class="card" style="font-size:11px;color:var(--text3)">No first aid records for this scholar.</div>';
+        return;
+      }
+      wrap.innerHTML='<div class="card">'+faRows.map(function(r){
+        return '<div style="padding:8px 0;border-bottom:0.5px solid var(--border)">'+
+          '<div style="font-size:12px;font-weight:600">'+escHtml(r.incident_date||'—')+' · '+escHtml(r.specials||'—')+'</div>'+
+          '<div style="font-size:11px;color:var(--text2);margin-top:2px">Injury: '+escHtml(r.injury_description||'—')+'</div>'+
+          '<div style="font-size:11px;color:var(--text2)">Treatment: '+escHtml(r.treatment||'—')+'</div>'+
+          '<div style="font-size:11px;color:var(--text2)">Returned to activity: '+(r.returned_to_activity?'Yes':'No')+' · Home contacted: '+(r.home_contact?'Yes':'No')+'</div>'+
+        '</div>';
+      }).join('')+'</div>';
+    }).catch(function(){
+      var wrap=document.getElementById('stu-first-aid');
+      if(wrap) wrap.innerHTML='<div class="card" style="font-size:11px;color:var(--text3)">Could not load first aid records.</div>';
+    });
   });
 }
 
