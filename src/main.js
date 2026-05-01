@@ -148,7 +148,7 @@ var BAND_LABELS = {
   'EC':'Exceptional Children'
 };
 
-var BEHAVIORS=['Verbal disruption','Noncompliance','Off-task','Emotional distress','Peer conflict','Physical behavior','Out of seat','Device misuse'];
+var BEHAVIORS=['Verbal disruption','Noncompliance','Off-task','Emotional distress','Peer conflict','Physical behavior','Out of seat','Device misuse','Sleeping/disengaged'];
 var SUBJECTS_SPECIALS=['PE','Technology','Art','Music'];
 var SUBJECTS_HOMEROOM=['Block 1','Block 2','Block 3','Lunch','Block 4','Block 5','Block 6','Reading','Math','Science','Small Group','Other'];
 var SUBJECTS_IA=['PE','Technology','Art','Music','Block 1','Block 2','Block 3','Lunch','Block 4','Block 5','Block 6','Reading','Math','Science','Small Group','Other'];
@@ -214,7 +214,7 @@ function emailToDisplayName(email){
 }
 
 
-var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login'};
+var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login',firstAidRows:[],firstAidLoaded:false,firstAidError:false};
 var STU_PREV_SCREEN='S-detail';
 var DET_PREV_SCREEN='S-classes';
 function setStuPrevScreen(v){ STU_PREV_SCREEN=v||'S-detail'; }
@@ -956,12 +956,45 @@ function renderAdmin(){
   else if(t==='timing'){ content=bTM(live); setTimeout(function(){ wireHeat('all'); },50); }
   else if(t==='coverage') content=bCV();
   else if(t==='students') content=bST(live);
+  else if(t==='firstaid') content=bFA();
   else content=bCL(live);
   body.innerHTML=content;
   if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">⚠ Could not reach Supabase — showing cached data</div>'+body.innerHTML;
   if(t==='students') wireStudentLinks(body,'S-admin');
   setTimeout(drawCharts,60);
   body.querySelectorAll('[data-cls]').forEach(function(r){r.addEventListener('click',function(){openDet(r.dataset.cls,live);});});
+}
+
+function fetchFirstAid(cb){
+  if(!SESSION.token){ STATE.firstAidLoaded=true; if(cb) cb(new Error('not authenticated'),[]); return; }
+  var q='select=*&order=incident_date.desc,created_at.desc&limit=500';
+  fetch(SB_URL+'/rest/v1/first_aid_log?'+q,{
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token}
+  }).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(rows){
+    STATE.firstAidRows=rows||[];
+    STATE.firstAidLoaded=true;
+    STATE.firstAidError=false;
+    if(cb) cb(null, STATE.firstAidRows);
+  }).catch(function(err){
+    STATE.firstAidRows=[];
+    STATE.firstAidLoaded=true;
+    STATE.firstAidError=true;
+    if(cb) cb(err, []);
+  });
+}
+function bFA(){
+  if(!STATE.firstAidLoaded){
+    fetchFirstAid(function(){ renderAdmin(); });
+    return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">Loading first aid log…</div>';
+  }
+  var rows=STATE.firstAidRows||[];
+  if(!rows.length) return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No first aid records found.</div>';
+  return '<div class="sec">First Aid</div><div class="card" style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="text-align:left;color:var(--text2)"><th style="padding:6px">Scholar</th><th style="padding:6px">Homeroom</th><th style="padding:6px">Date</th><th style="padding:6px">Injury</th><th style="padding:6px">Treatment</th><th style="padding:6px">Home contacted</th></tr></thead><tbody>'+
+    rows.map(function(r){return '<tr style="border-top:0.5px solid var(--border)"><td style="padding:6px">'+escHtml(r.student||'—')+'</td><td style="padding:6px">'+escHtml(r.homeroom||'—')+'</td><td style="padding:6px">'+escHtml(r.incident_date||'—')+'</td><td style="padding:6px">'+escHtml(r.injury_description||'—')+'</td><td style="padding:6px">'+escHtml(r.treatment||'—')+'</td><td style="padding:6px">'+(r.home_contact?'Yes':'No')+'</td></tr>';}).join('')+
+    '</tbody></table></div>';
 }
 
 function bOV(live){
