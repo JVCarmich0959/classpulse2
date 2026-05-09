@@ -4,6 +4,40 @@ import { openStudent, wireStudentLinks, stuNameLink } from './views/admin/studen
 
 'use strict';
 
+// ── THEME ──
+function updateThemeToggleLabel(){
+  var btn = el('btn-theme-toggle');
+  if(!btn) return;
+  var current = document.documentElement.getAttribute('data-theme') || 'light';
+  btn.textContent = current === 'dark' ? '[ Light ]' : '[ Dark ]';
+}
+
+function initTheme(){
+  var next = 'light';
+  try{
+    var saved = localStorage.getItem('cp-theme');
+    if(saved === 'dark' || saved === 'light'){
+      next = saved;
+    } else if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches){
+      next = 'dark';
+    }
+  }catch(e){
+    if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) next = 'dark';
+  }
+  document.documentElement.setAttribute('data-theme', next);
+  updateThemeToggleLabel();
+}
+
+function toggleTheme(){
+  var current = document.documentElement.getAttribute('data-theme') || 'light';
+  var next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try{ localStorage.setItem('cp-theme', next); }catch(e){}
+  updateThemeToggleLabel();
+}
+
+window.toggleTheme = toggleTheme;
+
 // ── SUPABASE CONFIG ──
 
 
@@ -2280,6 +2314,7 @@ function initPasswordSetup(token){
 }
 
 // ── INIT ──
+initTheme();
 var _inviteToken = checkInviteToken();
 if(_inviteToken){
   initPasswordSetup(_inviteToken);
@@ -2330,6 +2365,7 @@ export {
   SESSION, STATE, ALL_CLASSES, BAND_LABELS, BEHAVIORS, HOMEROOMS, SER, SC,
   todayStr, nowStr, freshEntry,
   saveSession, loadSession, refreshSession, signOut,
+  initTheme, toggleTheme, updateThemeToggleLabel,
   initLogin, fetchRole,
   authedFetch, authedInsert, authedSelect,
   fetchLiveData, buildLiveStats, fetchClassIncidents, fetchStudentIncidents, renderIncidentList,

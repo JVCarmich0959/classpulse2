@@ -7,6 +7,22 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="STEM Behavior">
 <meta name="theme-color" content="#00e6c8">
+<script>
+(function(){
+  var next = 'light';
+  try{
+    var saved = localStorage.getItem('cp-theme');
+    if(saved === 'dark' || saved === 'light'){
+      next = saved;
+    } else if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches){
+      next = 'dark';
+    }
+  }catch(e){
+    if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) next = 'dark';
+  }
+  document.documentElement.setAttribute('data-theme', next);
+})();
+</script>
 <title>ClassPulse</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/favicon.svg">
@@ -116,7 +132,7 @@
 
 <div id="S-admin" class="screen hidden">
   <div class="st"></div>
-  <div class="topbar"><div><h1>Dashboard</h1><div class="sub" id="admin-sub">Jan 21 – Apr 1, 2026 · Live data</div></div><div style="display:flex;gap:6px"><button class="pill" id="btn-export" style="font-size:11px">↓ CSV</button><button class="pill" id="btn-a-log">Log →</button><button class="pill" id="btn-a-signout" style="color:var(--red);border-color:rgba(255,68,102,.3)">↩</button></div></div>
+  <div class="topbar"><div><h1>Dashboard</h1><div class="sub" id="admin-sub">Jan 21 – Apr 1, 2026 · Live data</div></div><div style="display:flex;gap:6px"><button class="pill" id="btn-theme-toggle" onclick="toggleTheme()" style="font-size:10px;letter-spacing:.06em">[ Dark ]</button><button class="pill" id="btn-export" style="font-size:11px">↓ CSV</button><button class="pill" id="btn-a-log">Log →</button><button class="pill" id="btn-a-signout" style="color:var(--red);border-color:rgba(255,68,102,.3)">↩</button></div></div>
   <!-- freshness strip -->
   <div class="fresh-strip">
     <div class="fresh-dot"></div>
