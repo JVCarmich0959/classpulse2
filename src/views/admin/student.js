@@ -1,5 +1,5 @@
 import { SB_URL, SB_KEY } from '../../config.js';
-import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard, displayBehavior, skeletonKpis, skeletonRows, animateListIn, showToast, emptyState } from '../../main.js';
+import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard, displayBehavior, skeletonKpis, skeletonRows, animateListIn, showToast, emptyState, authedFetch } from '../../main.js';
 
 function fetchStudentNote(name, cb){
   if(!SESSION.token){ if(cb) cb(new Error('not authenticated'), ''); return; }
@@ -146,7 +146,10 @@ function openStudent(name, prevScreen){
       (SESSION.role==='admin' ?
         '<div style="margin:14px 0;border-top:0.5px solid var(--border)"></div>'+
         '<div class="sec">Accommodations <span style="font-size:9px;color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">Admin only</span></div>'+
-        '<div id="stu-accommodations"></div>'
+        '<div id="stu-accommodations"></div>'+
+        '<div style="margin:14px 0;border-top:0.5px solid var(--border)"></div>'+
+        '<div class="sec">Color Transition History <span style="font-size:9px;font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0">Admin only</span></div>'+
+        '<div id="stu-transitions"></div>'
       : '');
 
     if(SESSION.role==='admin'){
@@ -169,6 +172,49 @@ function openStudent(name, prevScreen){
             else showToast('Note saved');
           });
         });
+      }
+    }
+
+    if(SESSION.role==='admin'){
+      var ctWrap = document.getElementById('stu-transitions');
+      if(ctWrap){
+        authedFetch('/rest/v1/color_transitions?student=eq.' + encodeURIComponent(name) + '&select=*&order=created_at.desc&limit=30')
+          .then(function(r){ return r.json(); })
+          .then(function(rows){
+            if(!rows || !rows.length){
+              ctWrap.innerHTML = emptyState('No color transitions logged', 'Color transitions will appear here when teachers log them.');
+              return;
+            }
+            var colorHex = { Green:'#1e7e44', Yellow:'#BFA95F', Orange:'#d4622a', Red:'#c0392b' };
+            ctWrap.innerHTML = '<div class="card">' +
+              rows.map(function(r){
+                var fromC = colorHex[r.from_color] || '#98A2AD';
+                var toC = colorHex[r.to_color] || '#98A2AD';
+                var time = r.created_at ? new Date(r.created_at).toLocaleString('en-US', {
+                  month:'short', day:'numeric', hour:'numeric', minute:'2-digit'
+                }) : '';
+                var resolved = r.resolved_at
+                  ? '<span style="font-size:10px;color:#1e7e44;margin-left:8px;font-weight:600">Returned to Green</span>'
+                  : '';
+                return '<div style="padding:10px 0;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:10px">' +
+                  '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
+                    '<div style="width:10px;height:10px;border-radius:50%;background:' + fromC + '"></div>' +
+                    '<span style="font-size:12px;color:var(--text3)">→</span>' +
+                    '<div style="width:10px;height:10px;border-radius:50%;background:' + toC + '"></div>' +
+                  '</div>' +
+                  '<div style="flex:1;min-width:0">' +
+                    '<span style="font-size:12px;font-weight:600;color:var(--text)">' + escHtml(r.specials || '') + '</span>' +
+                    resolved +
+                    (r.notes ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(r.notes) + '</div>' : '') +
+                  '</div>' +
+                  '<span style="font-size:10px;color:var(--text3);flex-shrink:0">' + escHtml(time) + '</span>' +
+                '</div>';
+              }).join('') +
+            '</div>';
+          })
+          .catch(function(){
+            if(ctWrap) ctWrap.innerHTML = emptyState('Could not load transitions', '');
+          });
       }
     }
 
