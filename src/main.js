@@ -1315,15 +1315,15 @@ function bOV(live){
   var perDay=LD.per_day||'—';
   return '<div class="kpi-grid">'+
     kpiH('Total incidents',tot,dateRange,false)+
-    kpiH('Per school day',perDay,uniqueDays+' logged days',false)+
+    kpiH('Per logged incident day',perDay,uniqueDays+' logged incident days',false)+
     kpiH('Color chart used',chartPct+'%',(LD.chart_yes||0)+' of '+LD.total+' incidents',false)+
     kpiH('Home contacted',homePct+'%',(LD.home_yes||0)+' of '+LD.total+' incidents',true)+
     '</div>'+
-    '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">Weekly incident rate / school day</div>'+
+    '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">Weekly incidents / logged incident day</div>'+
     '<canvas id="c-wk" height="80" style="width:100%;display:block" data-live="1"></canvas>'+
     '<div style="font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:.04em;font-family:DM Mono,monospace">▓ EOG testing window May 19–21 · shaded region is projected, not logged data</div>'+
     '<div style="display:flex;gap:12px;margin-top:8px">'+
-    '<span style="font-size:10px;color:var(--text2);display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:2px;background:#4d8bff;border-radius:1px"></span>Rate/day</span>'+
+    '<span style="font-size:10px;color:var(--text2);display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:2px;background:#4d8bff;border-radius:1px"></span>Incidents/logged day</span>'+
     '</div></div>'+
     '<div class="sec">Incidents by grade</div><div class="card"><canvas id="c-gr" height="100" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">Behavior types <span style="font-weight:400;color:var(--text3);font-size:10px;text-transform:none;letter-spacing:0">(tagged incidents · multi-select)</span></div><div class="card">'+
@@ -1341,7 +1341,7 @@ function bTM(live){
   if(!rows.length){
     return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
   }
-  return '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per school day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
+  return '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per logged incident day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">Weekly longitudinal trend</div><div class="card"><canvas id="c-tm-wk" height="80" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">Monthly incident totals</div><div class="card"><canvas id="c-tm-mo" height="90" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">By class block</div><div class="card"><canvas id="c-tm-pd" height="90" style="width:100%;display:block"></canvas></div>'+
