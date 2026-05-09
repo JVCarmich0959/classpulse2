@@ -119,7 +119,6 @@ function authedSelect(query){
 
 
 // ── LIVE DATA ──
-var D = {"total":248,"weekly":[{"w":"Jan W4","r":7.67,"n":23},{"w":"Jan W5","r":8.75,"n":35},{"w":"Feb W6","r":2.0,"n":6},{"w":"Feb W7","r":5.6,"n":28},{"w":"Feb W8","r":3.5,"n":14},{"w":"Feb W9","r":5.25,"n":21},{"w":"Mar W10","r":7.2,"n":36},{"w":"Mar W11","r":2.4,"n":12},{"w":"Mar W12","r":5.0,"n":20},{"w":"Mar W13","r":7.4,"n":37},{"w":"Apr W14","r":5.33,"n":16}],"grades":[{"g":"Kinder","n":60},{"g":"5th","n":49},{"g":"2nd","n":37},{"g":"4th","n":37},{"g":"1st","n":29},{"g":"3rd","n":29}],"specials":[{"n":"PE","total":99},{"n":"Technology","total":95},{"n":"Art","total":34},{"n":"Music","total":19}],"behaviors":[{"t":"Verbal disruption","n":76},{"t":"Noncompliance","n":65},{"t":"Off-task","n":61},{"t":"Emotional distress","n":59},{"t":"Peer conflict","n":51},{"t":"Physical behavior","n":36},{"t":"Out of seat","n":29},{"t":"Device misuse","n":12},{"t":"Sleeping/disengaged","n":8},{"t":"Unspecified","n":6}],"dow":[{"d":"Monday","r":5.89},{"d":"Tuesday","r":4.78},{"d":"Wednesday","r":8.0},{"d":"Thursday","r":4.11},{"d":"Friday","r":5.38}],"chart_yes":102,"home_yes":35,"top_students":[{"name":"London German","n":9},{"name":"Austin Crowder","n":8},{"name":"Eternity Deitz-Hutchison","n":5},{"name":"Gabriel Smith","n":5},{"name":"Jaxon Anderson","n":5},{"name":"Kaiden Horlback","n":4},{"name":"Osiel Lopez","n":4},{"name":"Ibrie Stanley","n":4},{"name":"Chester King","n":4},{"name":"Kamarri Douglas","n":4},{"name":"Dominic Hardy","n":4},{"name":"Lafayette Joyner","n":4},{"name":"Vincent Newberry","n":4},{"name":"Mila Moran","n":4},{"name":"Foster Langdon","n":4}],"top_cls":[{"cls":"5th-Smith","n":22},{"cls":"4th-Edwards","n":22},{"cls":"2nd-Clark","n":22},{"cls":"K-Wing","n":19},{"cls":"5th-Davis","n":18},{"cls":"K-Fortner","n":17},{"cls":"1st-Smith","n":12},{"cls":"3rd-Mello","n":12},{"cls":"3rd-Danis/McClain","n":11},{"cls":"2nd-Kennedy","n":11},{"cls":"5th-Coles","n":9},{"cls":"2nd-Ham","n":8},{"cls":"4th-Dohar","n":8},{"cls":"4th-Bridgers","n":7},{"cls":"K-McCormick","n":7}],"classrooms":{"1st-Beckett":{"total":5,"chart":60,"home":0,"behaviors":[{"t":"Verbal disruption","n":2},{"t":"Noncompliance","n":1},{"t":"Out of seat","n":1},{"t":"Sleeping/disengaged","n":1},{"t":"Peer conflict","n":1}],"specials":{"Technology":2,"PE":2,"Art":1},"students":[{"name":"Lucas Pulley","n":2},{"name":"Seneca Jackson","n":2},{"name":"Infinity Deitz-Hutchison","n":1}],"weekly":[{"w":"Jan W4","n":2},{"w":"Mar W13","n":2},{"w":"Apr W14","n":1}]},"1st-Cosetti":{"total":6,"chart":33,"home":17,"behaviors":[{"t":"Noncompliance","n":3},{"t":"Verbal disruption","n":2},{"t":"Sleeping/disengaged","n":1},{"t":"Off-task","n":1},{"t":"Device misuse","n":1}],"specials":{"Technology":3,"Art":3},"students":[{"name":"Tyon Buckner","n":3},{"name":"James Champion","n":1},{"name":"Zayana Fisher","n":1}],"weekly":[{"w":"Jan W4","n":1},{"w":"Feb W8","n":1},{"w":"Feb W9","n":1},{"w":"Mar W10","n":1},{"w":"Mar W13","n":1},{"w":"Apr W14","n":1}]},"1st-Smith":{"total":12,"chart":25,"home":17,"behaviors":[{"t":"Verbal disruption","n":4},{"t":"Peer conflict","n":4},{"t":"Noncompliance","n":3},{"t":"Emotional distress","n":2},{"t":"Off-task","n":1},{"t":"Physical behavior","n":1}],"specials":{"PE":6,"Technology":4,"Music":2},"students":[{"name":"Sophia Cherry","n":3},{"name":"Tiwuan Hardy","n":3},{"name":"Reigna Prensa","n":1},{"name":"Other","n":5}],"weekly":[{"w":"Jan W4","n":1},{"w":"Jan W5","n":3},{"w":"Feb W9","n":3},{"w":"Mar W10","n":3},{"w":"Mar W11","n":1},{"w":"Apr W14","n":1}]},"1st-Worsely":{"total":6,"chart":17,"home":17,"behaviors":[{"t":"Off-task","n":4},{"t":"Noncompliance","n":2},{"t":"Peer conflict","n":1},{"t":"Out of seat","n":1},{"t":"Verbal disruption","n":1}],"specials":{"Art":3,"Technology":2,"Music":1},"students":[{"name":"Juelz Crawford","n":2},{"name":"Kailee Williams","n":2},{"name":"Delilah Zeigler","n":1},{"name":"Barrett Boutte","n":1}],"weekly":[{"w":"Feb W7","n":2},{"w":"Mar W10","n":1},{"w":"Apr W14","n":3}]},"2nd-Clark":{"total":22,"chart":59,"home":18,"behaviors":[{"t":"Verbal disruption","n":8},{"t":"Off-task","n":8},{"t":"Emotional distress","n":8},{"t":"Noncompliance","n":7},{"t":"Physical behavior","n":4},{"t":"Peer conflict","n":3}],"specials":{"PE":10,"Technology":10,"Music":1,"Art":1},"students":[{"name":"Austin Crowder","n":8},{"name":"Mila Moran","n":4},{"name":"Noah Hartman","n":2},{"name":"Eli Gonzalez","n":2},{"name":"Other","n":6}],"weekly":[{"w":"Jan W5","n":4},{"w":"Feb W7","n":1},{"w":"Feb W8","n":1},{"w":"Feb W9","n":3},{"w":"Mar W10","n":2},{"w":"Mar W11","n":4},{"w":"Mar W12","n":1},{"w":"Mar W13","n":5},{"w":"Apr W14","n":1}]},"2nd-Ham":{"total":8,"chart":62,"home":25,"behaviors":[{"t":"Peer conflict","n":2},{"t":"Emotional distress","n":2},{"t":"Physical behavior","n":2},{"t":"Out of seat","n":1},{"t":"Off-task","n":1},{"t":"Noncompliance","n":1}],"specials":{"Technology":4,"PE":4},"students":[{"name":"Kaiden Horlback","n":4},{"name":"Aurelia Gonzalez","n":1},{"name":"Travis Oates","n":1},{"name":"Ava Cumberlander","n":1},{"name":"Isaiah Calcek","n":1}],"weekly":[{"w":"Jan W4","n":1},{"w":"Jan W5","n":1},{"w":"Feb W6","n":1},{"w":"Feb W7","n":1},{"w":"Mar W10","n":3},{"w":"Mar W11","n":1}]},"2nd-Kennedy":{"total":11,"chart":18,"home":9,"behaviors":[{"t":"Emotional distress","n":5},{"t":"Peer conflict","n":5},{"t":"Verbal disruption","n":3},{"t":"Physical behavior","n":3},{"t":"Out of seat","n":2},{"t":"Noncompliance","n":2}],"specials":{"PE":5,"Art":3,"Music":2,"Technology":1},"students":[{"name":"Lafayette Joyner","n":4},{"name":"Avangeline King","n":1},{"name":"Avalynn Lawson","n":1},{"name":"Other","n":5}],"weekly":[{"w":"Feb W7","n":3},{"w":"Feb W9","n":1},{"w":"Mar W10","n":3},{"w":"Mar W12","n":2},{"w":"Mar W13","n":2}]},"2nd-Pollard":{"total":5,"chart":0,"home":0,"behaviors":[{"t":"Verbal disruption","n":2},{"t":"Emotional distress","n":1},{"t":"Off-task","n":1},{"t":"Noncompliance","n":1},{"t":"Peer conflict","n":1}],"specials":{"PE":3,"Technology":2},"students":[{"name":"Brandon Richardson","n":2},{"name":"Travis","n":1},{"name":"Henry Brown","n":1},{"name":"Jordan Jones","n":1}],"weekly":[{"w":"Jan W4","n":2},{"w":"Mar W10","n":1},{"w":"Mar W13","n":1},{"w":"Apr W14","n":1}]},"3rd-Danis/McClain":{"total":11,"chart":18,"home":27,"behaviors":[{"t":"Off-task","n":2},{"t":"Out of seat","n":2},{"t":"Verbal disruption","n":1},{"t":"Peer conflict","n":1},{"t":"Emotional distress","n":1}],"specials":{"Technology":5,"PE":3,"Music":1,"Art":1},"students":[{"name":"Ayden Bazemore","n":2},{"name":"Trace Corum","n":2},{"name":"Colton Whitt","n":1},{"name":"Alexia Hernandez","n":1},{"name":"Travis Oates","n":1}],"weekly":[{"w":"Jan W4","n":6},{"w":"Feb W7","n":1},{"w":"Feb W9","n":1},{"w":"Mar W13","n":2},{"w":"Apr W14","n":1}]},"3rd-Jones":{"total":6,"chart":50,"home":0,"behaviors":[{"t":"Noncompliance","n":3},{"t":"Verbal disruption","n":1},{"t":"Device misuse","n":1},{"t":"Off-task","n":1},{"t":"Peer conflict","n":1}],"specials":{"Technology":3,"PE":2,"Art":1},"students":[{"name":"King Artist","n":2},{"name":"Kameron Batts","n":1},{"name":"Harper Hall","n":1},{"name":"Arayah Boutte","n":1},{"name":"Oliva Sugg","n":1}],"weekly":[{"w":"Jan W5","n":1},{"w":"Feb W7","n":1},{"w":"Mar W12","n":3},{"w":"Mar W13","n":1}]},"3rd-Mello":{"total":12,"chart":33,"home":25,"behaviors":[{"t":"Peer conflict","n":7},{"t":"Verbal disruption","n":6},{"t":"Noncompliance","n":5},{"t":"Emotional distress","n":4},{"t":"Physical behavior","n":2},{"t":"Out of seat","n":2}],"specials":{"PE":4,"Music":3,"Art":3,"Technology":2},"students":[{"name":"Chester King","n":4},{"name":"Ezra Morado","n":3},{"name":"Maya Spriggs","n":2},{"name":"Noah Thomas","n":1},{"name":"Issac Uzzell","n":1}],"weekly":[{"w":"Jan W5","n":2},{"w":"Feb W6","n":2},{"w":"Feb W7","n":3},{"w":"Feb W8","n":1},{"w":"Mar W10","n":1},{"w":"Mar W12","n":2},{"w":"Mar W13","n":1}]},"4th-Bridgers":{"total":7,"chart":14,"home":0,"behaviors":[{"t":"Emotional distress","n":4},{"t":"Peer conflict","n":3},{"t":"Noncompliance","n":1}],"specials":{"PE":3,"Art":2,"Technology":1,"Music":1},"students":[{"name":"Indi Coley","n":2},{"name":"Kymere McCoy","n":1},{"name":"Gideon Allen","n":1},{"name":"Other","n":3}],"weekly":[{"w":"Jan W4","n":3},{"w":"Feb W6","n":1},{"w":"Mar W10","n":3}]},"4th-Dohar":{"total":8,"chart":88,"home":38,"behaviors":[{"t":"Physical behavior","n":4},{"t":"Verbal disruption","n":3},{"t":"Emotional distress","n":2},{"t":"Noncompliance","n":1},{"t":"Peer conflict","n":1},{"t":"Off-task","n":1}],"specials":{"PE":6,"Technology":2},"students":[{"name":"Braxton Wrestler","n":3},{"name":"Declan Costello","n":2},{"name":"Mattix Mooring","n":1},{"name":"Travonte Coley","n":1},{"name":"Chavar Prince","n":1}],"weekly":[{"w":"Jan W5","n":4},{"w":"Mar W10","n":3},{"w":"Apr W14","n":1}]},"4th-Edwards":{"total":22,"chart":36,"home":14,"behaviors":[{"t":"Verbal disruption","n":7},{"t":"Off-task","n":6},{"t":"Peer conflict","n":5},{"t":"Noncompliance","n":4},{"t":"Emotional distress","n":4},{"t":"Out of seat","n":2}],"specials":{"Technology":10,"Art":6,"PE":6},"students":[{"name":"London German","n":9},{"name":"Ibrie Stanley","n":4},{"name":"Doll Brown","n":2},{"name":"Connor Sigmund","n":1},{"name":"Other","n":6}],"weekly":[{"w":"Jan W4","n":2},{"w":"Jan W5","n":1},{"w":"Feb W7","n":4},{"w":"Feb W9","n":3},{"w":"Mar W11","n":3},{"w":"Mar W12","n":3},{"w":"Mar W13","n":3},{"w":"Apr W14","n":3}]},"5th-Coles":{"total":9,"chart":33,"home":0,"behaviors":[{"t":"Off-task","n":4},{"t":"Emotional distress","n":3},{"t":"Verbal disruption","n":2},{"t":"Physical behavior","n":2},{"t":"Noncompliance","n":2},{"t":"Sleeping/disengaged","n":1}],"specials":{"PE":6,"Technology":1,"Art":1,"Music":1},"students":[{"name":"Elijah Sanders","n":2},{"name":"Lacey Musser","n":1},{"name":"Kendra Champion","n":1},{"name":"Other","n":5}],"weekly":[{"w":"Jan W5","n":1},{"w":"Feb W6","n":1},{"w":"Feb W7","n":2},{"w":"Mar W10","n":5}]},"5th-Davis":{"total":18,"chart":28,"home":0,"behaviors":[{"t":"Verbal disruption","n":7},{"t":"Peer conflict","n":6},{"t":"Off-task","n":6},{"t":"Noncompliance","n":5},{"t":"Physical behavior","n":3},{"t":"Out of seat","n":2}],"specials":{"Technology":9,"PE":8,"Music":1},"students":[{"name":"Osiel Lopez","n":4},{"name":"Liam Howell","n":4},{"name":"Jeremiah Edwards","n":2},{"name":"Sophia Ponce","n":2},{"name":"Kaitlyn Sigmon","n":2}],"weekly":[{"w":"Jan W4","n":1},{"w":"Jan W5","n":6},{"w":"Feb W8","n":4},{"w":"Mar W12","n":3},{"w":"Mar W13","n":2},{"w":"Apr W14","n":2}]},"5th-Smith":{"total":22,"chart":32,"home":23,"behaviors":[{"t":"Verbal disruption","n":9},{"t":"Noncompliance","n":6},{"t":"Off-task","n":5},{"t":"Peer conflict","n":4},{"t":"Emotional distress","n":3},{"t":"Device misuse","n":2}],"specials":{"Technology":11,"PE":8,"Art":3},"students":[{"name":"Gabriel Smith","n":6},{"name":"Reagan Best","n":3},{"name":"Braiden Roa","n":1},{"name":"Bentley Coletrane","n":1},{"name":"Other","n":11}],"weekly":[{"w":"Jan W4","n":1},{"w":"Jan W5","n":1},{"w":"Feb W7","n":3},{"w":"Feb W8","n":2},{"w":"Feb W9","n":4},{"w":"Mar W10","n":2},{"w":"Mar W12","n":2},{"w":"Mar W13","n":7}]},"EC":{"total":6,"chart":67,"home":17,"behaviors":[{"t":"Emotional distress","n":3},{"t":"Off-task","n":2},{"t":"Noncompliance","n":2},{"t":"Physical behavior","n":2},{"t":"Sleeping/disengaged","n":1},{"t":"Verbal disruption","n":1}],"specials":{"PE":4,"Art":2},"students":[{"name":"Vincent Newberry","n":4},{"name":"Cally Boseman","n":1},{"name":"Wizdom Grantham","n":1}],"weekly":[{"w":"Feb W6","n":1},{"w":"Feb W7","n":2},{"w":"Mar W10","n":1},{"w":"Mar W11","n":1},{"w":"Mar W13","n":1}]},"K-Fortner":{"total":17,"chart":47,"home":6,"behaviors":[{"t":"Emotional distress","n":8},{"t":"Off-task","n":6},{"t":"Noncompliance","n":6},{"t":"Verbal disruption","n":5},{"t":"Physical behavior","n":5},{"t":"Out of seat","n":4}],"specials":{"Technology":7,"PE":7,"Art":2,"Music":1},"students":[{"name":"Jaxon Anderson","n":5},{"name":"Kamarri Douglas","n":4},{"name":"Knowledge Grantham","n":3},{"name":"Jaxson Anderson","n":3},{"name":"Caleb Carter","n":1}],"weekly":[{"w":"Jan W4","n":1},{"w":"Jan W5","n":3},{"w":"Feb W7","n":1},{"w":"Feb W9","n":2},{"w":"Mar W10","n":2},{"w":"Mar W11","n":2},{"w":"Mar W12","n":1},{"w":"Mar W13","n":5}]},"K-Helms":{"total":6,"chart":50,"home":0,"behaviors":[{"t":"Verbal disruption","n":4},{"t":"Noncompliance","n":4},{"t":"Emotional distress","n":2},{"t":"Device misuse","n":2},{"t":"Sleeping/disengaged","n":1},{"t":"Out of seat","n":1}],"specials":{"Technology":3,"PE":2,"Music":1},"students":[{"name":"Trayvon Williams","n":4},{"name":"Acestin Britton","n":1},{"name":"Dontae Champion","n":1}],"weekly":[{"w":"Feb W7","n":1},{"w":"Feb W8","n":1},{"w":"Feb W9","n":1},{"w":"Mar W10","n":2},{"w":"Mar W12","n":1}]},"K-McCormick":{"total":7,"chart":57,"home":0,"behaviors":[{"t":"Off-task","n":4},{"t":"Verbal disruption","n":2},{"t":"Emotional distress","n":1},{"t":"Physical behavior","n":1}],"specials":{"PE":5,"Music":1,"Technology":1},"students":[{"name":"Monroe Bush","n":2},{"name":"Emilia Fishman","n":1},{"name":"Brielle Haskill","n":1},{"name":"Christopher Jackson","n":1},{"name":"Montonio Hall","n":1}],"weekly":[{"w":"Jan W5","n":2},{"w":"Mar W10","n":3},{"w":"Mar W13","n":1},{"w":"Apr W14","n":1}]},"K-Wing":{"total":19,"chart":63,"home":21,"behaviors":[{"t":"Verbal disruption","n":6},{"t":"Out of seat","n":6},{"t":"Off-task","n":5},{"t":"Noncompliance","n":5},{"t":"Device misuse","n":3},{"t":"Physical behavior","n":3}],"specials":{"Technology":12,"Music":3,"PE":3,"Art":1},"students":[{"name":"Eternity Deitz-Hutchison","n":5},{"name":"Dominic Hardy","n":4},{"name":"Foster Langdon","n":4},{"name":"Alivia Best","n":1},{"name":"Nathaniel Freedman","n":1}],"weekly":[{"w":"Jan W4","n":2},{"w":"Jan W5","n":3},{"w":"Feb W7","n":3},{"w":"Feb W8","n":4},{"w":"Feb W9","n":2},{"w":"Mar W12","n":2},{"w":"Mar W13","n":3}]}}};
 
 // ── ALL CLASSROOMS (grade-band ordered, includes zero-incident placeholders) ──
 var ALL_CLASSES = [
@@ -336,7 +335,7 @@ function startEegAnimation(){
   frame();
   return function(){ running=false; };
 }
-function alrt(t){return '<div class="alert"><span style="flex-shrink:0">⚠</span><span>'+t+'</span></div>';}
+function alrt(t){return '<div class="alert"><span style="flex-shrink:0">!</span><span>'+t+'</span></div>';}
 function kpiH(lb,v,sub,flag){return '<div class="kpi'+(flag?' flag':'')+'"><div class="lbl">'+lb+'</div><div class="val" style="color:'+(flag?'var(--red)':'var(--text)')+'">'+v+'</div><div class="sub">'+sub+'</div></div>';}
 
 // ── FRESHNESS STRIP ──
@@ -564,7 +563,7 @@ function renderScholarSuggestions(items, activeIdx){
   }
   box.innerHTML=scholarAc.items.map(function(r,i){
     return '<button type="button" class="scholar-ac-row'+(i===scholarAc.active?' active':'')+'" role="option" aria-selected="'+(i===scholarAc.active?'true':'false')+'" data-scholar-idx="'+i+'">'+
-      '<span class="scholar-ac-name">'+(r.alias?'<span class="scholar-ac-arrow">→</span>':'')+escHtml(r.student_name||'')+'</span>'+
+      '<span class="scholar-ac-name">'+(r.alias?'<span class="scholar-ac-arrow">&gt;</span>':'')+escHtml(r.student_name||'')+'</span>'+
       '<span class="scholar-ac-room">'+escHtml(r.homeroom||'')+'</span>'+
     '</button>';
   }).join('');
@@ -814,7 +813,7 @@ function renderHistory(){
     '<div class="sec">Weekly pattern heatmap</div><div class="card" id="hist-heat-card" style="overflow-x:auto"></div>'+
     monthHtml+
     (topStus.length?
-      '<div class="sec">Your students</div>'+
+      '<div class="sec">Your scholars</div>'+
       '<div class="card" style="margin-bottom:10px">'+
         topStus.map(function(s){return barRow(s.name,s.n,maxStu,'var(--accent)');}).join('')+
       '</div>'
@@ -1051,28 +1050,52 @@ function buildLiveStats(rows){
   var spCounts = {};
   rows.forEach(function(r){var s=r.subject||r.specials;if(s)spCounts[s]=(spCounts[s]||0)+1;});
   var specials = Object.keys(spCounts).sort(function(a,b){return spCounts[b]-spCounts[a];}).map(function(k){return{n:k,total:spCounts[k]};});
+  var dates = rows.map(function(r){return r.incident_date || (r.created_at||'').slice(0,10);}).filter(Boolean).sort();
+  var dateRange = dates.length ? dates[0] + ' – ' + dates[dates.length-1] : 'No data';
+  var uniqueDaysMap = rows.reduce(function(a,r){
+    var ds = r.incident_date || (r.created_at||'').slice(0,10);
+    if(ds) a[ds]=1;
+    return a;
+  },{});
+  var uniqueDays = Object.keys(uniqueDaysMap).length;
+  var perDay = uniqueDays ? (rows.length / uniqueDays).toFixed(1) : '—';
   // DOW
-  var dowCounts = {};var dowDays = {Monday:9,Tuesday:9,Wednesday:9,Thursday:9,Friday:8};
+  var dowCounts = {}, dowDayCounts = {};
   rows.forEach(function(r){
-    if(!r.incident_date) return;
-    var d = new Date(r.incident_date+'T12:00:00');
+    var ds = r.incident_date || (r.created_at||'').slice(0,10);
+    if(!ds) return;
+    var d = new Date(ds+'T12:00:00');
+    if(isNaN(d)) return;
     var name=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
     dowCounts[name]=(dowCounts[name]||0)+1;
+    dowDayCounts[name]=dowDayCounts[name]||{};
+    dowDayCounts[name][ds]=1;
   });
   var dowOrder=['Monday','Tuesday','Wednesday','Thursday','Friday'];
-  var dow = dowOrder.map(function(d){return{d:d,r:dowCounts[d]?parseFloat((dowCounts[d]/(dowDays[d]||9)).toFixed(2)):0};});
+  var dow = dowOrder.map(function(d){var days=Object.keys(dowDayCounts[d]||{}).length;return{d:d,r:days?parseFloat((dowCounts[d]/days).toFixed(2)):0};});
   // weekly
-  var wkCounts = {};
+  var wkCounts = {}, wkDayCounts = {};
   rows.forEach(function(r){
-    var d = new Date((r.incident_date||r.created_at||'').slice(0,10)+'T12:00:00');
+    var ds = r.incident_date || (r.created_at||'').slice(0,10);
+    if(!ds) return;
+    var d = new Date(ds+'T12:00:00');
     if(isNaN(d)) return;
-    var m=d.getMonth()+1,day=d.getDate();
-    var lbl=m===1?(day<=25?'Jan W4':'Jan W5'):m===2?(day<=8?'Feb W6':day<=15?'Feb W7':day<=22?'Feb W8':'Feb W9'):m===3?(day<=8?'Mar W10':day<=15?'Mar W11':day<=22?'Mar W12':'Mar W13'):'Apr W14';
-    wkCounts[lbl]=(wkCounts[lbl]||0)+1;
+    var day=d.getDay();
+    var mon=new Date(d);
+    mon.setDate(d.getDate()-(day===0?6:day-1));
+    var key=mon.toISOString().slice(0,10);
+    wkCounts[key]=(wkCounts[key]||0)+1;
+    wkDayCounts[key]=wkDayCounts[key]||{};
+    wkDayCounts[key][ds]=1;
   });
-  var wkOrder=['Jan W4','Jan W5','Feb W6','Feb W7','Feb W8','Feb W9','Mar W10','Mar W11','Mar W12','Mar W13','Apr W14'];
-  var wkDays={  'Jan W4':3,'Jan W5':4,'Feb W6':3,'Feb W7':5,'Feb W8':4,'Feb W9':4,'Mar W10':5,'Mar W11':5,'Mar W12':4,'Mar W13':5,'Apr W14':3};
-  var weekly = wkOrder.map(function(w){var n=wkCounts[w]||0;return{w:w,r:parseFloat((n/(wkDays[w]||5)).toFixed(2)),n:n};});
+  var wkOrder=Object.keys(wkCounts).sort();
+  var weekly = wkOrder.map(function(w){
+    var d=new Date(w+'T12:00:00');
+    var label=isNaN(d)?w:(d.toLocaleString('en-US',{month:'short'})+' '+d.getDate());
+    var n=wkCounts[w]||0;
+    var days=Object.keys(wkDayCounts[w]||{}).length || 1;
+    return{w:label,r:parseFloat((n/days).toFixed(2)),n:n};
+  });
   // top students
   var stuCounts = {};
   rows.forEach(function(r){if(r.student) stuCounts[r.student]=(stuCounts[r.student]||0)+1;});
@@ -1089,8 +1112,9 @@ function buildLiveStats(rows){
     (r.behaviors||[]).forEach(function(b){var mapped=displayBehavior(b);c.behCounts[mapped]=(c.behCounts[mapped]||0)+1;});
     if(r.specials) c.spCounts[r.specials]=(c.spCounts[r.specials]||0)+1;
     if(r.student) c.stuCounts[r.student]=(c.stuCounts[r.student]||0)+1;
-    var d=new Date((r.incident_date||r.created_at||'').slice(0,10)+'T12:00:00');
-    if(!isNaN(d)){var m=d.getMonth()+1,day=d.getDate();var lbl=m===1?(day<=25?'Jan W4':'Jan W5'):m===2?(day<=8?'Feb W6':day<=15?'Feb W7':day<=22?'Feb W8':'Feb W9'):m===3?(day<=8?'Mar W10':day<=15?'Mar W11':day<=22?'Mar W12':'Mar W13'):'Apr W14';c.wkCounts[lbl]=(c.wkCounts[lbl]||0)+1;}
+    var ds=r.incident_date || (r.created_at||'').slice(0,10);
+    var d=new Date(ds+'T12:00:00');
+    if(!isNaN(d)){var day=d.getDay();var mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));var lbl=mon.toISOString().slice(0,10);c.wkCounts[lbl]=(c.wkCounts[lbl]||0)+1;}
   });
   var classrooms = {};
   Object.keys(clsMap).forEach(function(k){
@@ -1102,11 +1126,11 @@ function buildLiveStats(rows){
       behaviors:Object.keys(c.behCounts).sort(function(a,b){return c.behCounts[b]-c.behCounts[a];}).map(function(b){return{t:b,n:c.behCounts[b]};}),
       specials:c.spCounts,
       students:Object.keys(c.stuCounts).sort(function(a,b){return c.stuCounts[b]-c.stuCounts[a];}).slice(0,5).map(function(s){return{name:s,n:c.stuCounts[s]};}),
-      weekly:wkOrder.filter(function(w){return c.wkCounts[w];}).map(function(w){return{w:w,n:c.wkCounts[w]};})
+      weekly:Object.keys(c.wkCounts).sort().map(function(w){var d=new Date(w+'T12:00:00');var label=isNaN(d)?w:(d.toLocaleString('en-US',{month:'short'})+' '+d.getDate());return{w:label,n:c.wkCounts[w]};})
     };
   });
   var topCls = Object.keys(clsMap).sort(function(a,b){return clsMap[b].total-clsMap[a].total;}).slice(0,15).map(function(k){return{cls:k,n:clsMap[k].total};});
-  return {total:total,chart_yes:chartYes,home_yes:homeYes,behaviors:behaviors,grades:grades,specials:specials,dow:dow,weekly:weekly,top_students:topStudents,classrooms:classrooms,top_cls:topCls};
+  return {total:total,chart_yes:chartYes,home_yes:homeYes,behaviors:behaviors,grades:grades,specials:specials,dow:dow,weekly:weekly,top_students:topStudents,classrooms:classrooms,top_cls:topCls,date_range:dateRange,unique_days:uniqueDays,per_day:perDay};
 }
 
 // ── ADMIN ──
@@ -1130,7 +1154,7 @@ function renderAdmin(){
   else if(t==='firstaid') content=bFA();
   else content=bCL(live);
   body.innerHTML=content;
-  if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">⚠ Could not reach Supabase — showing cached data</div>'+body.innerHTML;
+  if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">Error: Could not reach Supabase — showing cached data</div>'+body.innerHTML;
   if(t==='students') wireStudentLinks(body,'S-admin');
   if(t==='firstaid') {
     body.querySelectorAll('[data-fa-spec]').forEach(function(btn) {
@@ -1280,24 +1304,30 @@ function toggleFA(id) {
 
 function bOV(live){
   var LD=live||{};
-  var tot=(LD.total!=null?LD.total:D.total)+STATE.logs.length;
-  var chartPct=Math.round((LD.chart_yes!=null?LD.chart_yes:D.chart_yes)/(LD.total||D.total)*100);
-  var homePct=Math.round((LD.home_yes!=null?LD.home_yes:D.home_yes)/(LD.total||D.total)*100);
+  if(!LD.total){
+    return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
+  }
+  var tot=LD.total+STATE.logs.length;
+  var chartPct=Math.round((LD.chart_yes||0)/LD.total*100);
+  var homePct=Math.round((LD.home_yes||0)/LD.total*100);
+  var dateRange=LD.date_range||'No data';
+  var uniqueDays=LD.unique_days||0;
+  var perDay=LD.per_day||'—';
   return '<div class="kpi-grid">'+
-    kpiH('Total incidents',tot,'Jan 21 – Apr 1, 2026',false)+
-    kpiH('Per school day','5.5','45 logged days',false)+
-    kpiH('Color chart used',chartPct+'%',D.chart_yes+' of '+D.total+' incidents',false)+
-    kpiH('Home contacted',homePct+'%',D.home_yes+' of '+D.total+' incidents',true)+
+    kpiH('Total incidents',tot,dateRange,false)+
+    kpiH('Per logged incident day',perDay,uniqueDays+' logged incident days',false)+
+    kpiH('Color chart used',chartPct+'%',(LD.chart_yes||0)+' of '+LD.total+' incidents',false)+
+    kpiH('Home contacted',homePct+'%',(LD.home_yes||0)+' of '+LD.total+' incidents',true)+
     '</div>'+
-    '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">Weekly incident rate / school day</div>'+
+    '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">Weekly incidents / logged incident day</div>'+
     '<canvas id="c-wk" height="80" style="width:100%;display:block" data-live="1"></canvas>'+
     '<div style="font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:.04em;font-family:DM Mono,monospace">▓ EOG testing window May 19–21 · shaded region is projected, not logged data</div>'+
     '<div style="display:flex;gap:12px;margin-top:8px">'+
-    '<span style="font-size:10px;color:var(--text2);display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:2px;background:#4d8bff;border-radius:1px"></span>Rate/day</span>'+
+    '<span style="font-size:10px;color:var(--text2);display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:2px;background:#4d8bff;border-radius:1px"></span>Incidents/logged day</span>'+
     '</div></div>'+
     '<div class="sec">Incidents by grade</div><div class="card"><canvas id="c-gr" height="100" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">Behavior types <span style="font-weight:400;color:var(--text3);font-size:10px;text-transform:none;letter-spacing:0">(tagged incidents · multi-select)</span></div><div class="card">'+
-    (LD.behaviors||D.behaviors).map(function(b,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+displayBehavior(b.t)+'</span><span style="font-family:DM Mono,monospace;color:'+(b.t==='Unspecified'?'var(--text3)':'var(--text2)')+'">'+b.n+'</span></div>'+pb((b.n/76)*100,b.t==='Unspecified'?'var(--text3)':SER[i%SER.length])+'</div>';}).join('')+'</div>'+
+    (function(){var beh=LD.behaviors||[];if(!beh.length)return '<div style="font-size:11px;color:var(--text3);padding:8px 0">No live data yet.</div>';var mx=beh.reduce(function(a,b){return Math.max(a,b.n);},0)||1;return beh.map(function(b,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+displayBehavior(b.t)+'</span><span style="font-family:DM Mono,monospace;color:'+(b.t==='Unspecified'?'var(--text3)':'var(--text2)')+'">'+b.n+'</span></div>'+pb((b.n/mx)*100,b.t==='Unspecified'?'var(--text3)':SER[i%SER.length])+'</div>';}).join('');}())+'</div>'+
     '<div class="sec">By subject</div><div class="card">'+
     (function(){
       var specList=LD.specials&&LD.specials.length?LD.specials:[];
@@ -1311,7 +1341,7 @@ function bTM(live){
   if(!rows.length){
     return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
   }
-  return '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per school day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
+  return '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per logged incident day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">Weekly longitudinal trend</div><div class="card"><canvas id="c-tm-wk" height="80" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">Monthly incident totals</div><div class="card"><canvas id="c-tm-mo" height="90" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec">By class block</div><div class="card"><canvas id="c-tm-pd" height="90" style="width:100%;display:block"></canvas></div>'+
@@ -1646,36 +1676,39 @@ function bCV(){
 }
 function bST(live){
   var LD=live||{};
-  var stuList=LD.top_students&&LD.top_students.length?LD.top_students:D.top_students;
-  var mx=stuList[0].n;
+  var stuList=LD.top_students&&LD.top_students.length?LD.top_students:[];
+  if(!stuList.length) return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
+  var mx=stuList[0].n||1;
   return '<div style="background:#1a0010;border:0.5px solid var(--red);border-radius:var(--r);padding:10px 14px;font-size:11px;color:#ff9a9a;margin-bottom:12px;line-height:1.5">'+
     '<strong>Restricted.</strong> For administrator use only. Do not distribute without redacting names.</div>'+
-    '<div class="sec">Students with 4+ logged incidents</div><div class="card">'+
+    '<div class="sec">Scholars with 4+ logged incidents</div><div class="card">'+
     stuList.map(function(s){return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+stuNameLink(s.name)+'</span><span style="font-family:DM Mono,monospace;font-weight:500;color:'+(s.n>=7?'var(--red)':s.n>=5?'var(--amber)':'var(--text2)')+'">'+s.n+'</span></div>'+pb((s.n/mx)*100,s.n>=7?'var(--red)':s.n>=5?'var(--amber)':'var(--accent)')+'</div>';}).join('')+'</div>'+
     '<div class="sec">System improvements needed</div><div class="card">'+
     [{t:'EOG testing window (May 19–21)',b:'Mark testing windows to separate stress spikes from baseline classroom patterns.'},{t:'Normalize by class meetings',b:'Replace calendar days with actual class meeting counts for fair comparisons.'},{t:'Coded consequence field',b:'Free-text consequences make intervention analysis impossible — use a controlled list.'},{t:'Stable student ID',b:'Name spelling variants (Jaxon/Jaxson, Lafayette/Lafeyette) undercount repeat students.'}].map(function(r){return '<div style="padding:10px 0;border-bottom:0.5px solid var(--border)"><div style="font-size:12px;font-weight:600;margin-bottom:3px">'+r.t+'</div><div style="font-size:11px;color:var(--text2);line-height:1.4">'+r.b+'</div></div>';}).join('')+'</div>';
 }
 function bCL(live){
   var LD=live||{};
-  var sorted=(LD.top_cls&&LD.top_cls.length?LD.top_cls:D.top_cls).slice().sort(function(a,b){return b.n-a.n;});
-  var mx=sorted[0].n;
+  var sorted=(LD.top_cls&&LD.top_cls.length?LD.top_cls:[]).slice().sort(function(a,b){return b.n-a.n;});
+  if(!sorted.length) return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
+  var mx=sorted[0].n||1;
   return '<div class="sec">All classrooms · sorted by incident count</div><div class="card">'+
-    sorted.map(function(c,i){var det=D.classrooms[c.cls]||{};return '<div class="li" data-cls="'+c.cls+'"><div class="li-c"><div class="li-t">'+c.cls+'</div><div class="li-s">Chart: '+(det.chart||'—')+'% · Home: '+(det.home||0)+'%</div>'+pb((c.n/mx)*100,i<3?'var(--red)':'var(--accent)')+'</div><div class="li-r" style="color:'+(i<3?'var(--red)':'var(--text2)')+';margin-left:10px">'+c.n+'</div><div style="color:var(--text3);font-size:18px">›</div></div>';}).join('')+'</div>';
+    sorted.map(function(c,i){var det=(LD.classrooms&&LD.classrooms[c.cls])||{};return '<div class="li" data-cls="'+c.cls+'"><div class="li-c"><div class="li-t">'+c.cls+'</div><div class="li-s">Chart: '+(det.chart!=null?det.chart:'—')+'% · Home: '+(det.home!=null?det.home:0)+'%</div>'+pb((c.n/mx)*100,i<3?'var(--red)':'var(--accent)')+'</div><div class="li-r" style="color:'+(i<3?'var(--red)':'var(--text2)')+';margin-left:10px">'+c.n+'</div><div style="color:var(--text3);font-size:18px">›</div></div>';}).join('')+'</div>';
 }
 
 // ── CLASS EXPLORER ──
-function filterClasses(list){
+function filterClasses(list, live){
   var f=STATE.clsFilter;
+  var classes=(live&&live.classrooms)||{};
   if(f==='all') return list;
-  if(f==='zero') return list.filter(function(k){var c=D.classrooms[k];return !c||c.total===0;});
-  if(f==='four') return list.filter(function(k){var c=D.classrooms[k];return c&&c.total>=4;});
-  if(f==='lowchart') return list.filter(function(k){var c=D.classrooms[k];return c&&c.total>0&&c.chart<30;});
+  if(f==='zero') return list.filter(function(k){var c=classes[k];return !c||c.total===0;});
+  if(f==='four') return list.filter(function(k){var c=classes[k];return c&&c.total>=4;});
+  if(f==='lowchart') return list.filter(function(k){var c=classes[k];return c&&c.total>0&&c.chart<30;});
   return list;
 }
 
 function renderClsExplorer(live){
   var liveArg=live||(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);
-  var filtered=filterClasses(ALL_CLASSES);
+  var filtered=filterClasses(ALL_CLASSES,liveArg);
   var q=(el('cls-search')||{value:''}).value||'';
   if(q) filtered=filtered.filter(function(k){return k.toLowerCase().indexOf(q.toLowerCase())>=0;});
 
@@ -1704,7 +1737,7 @@ function renderClsExplorer(live){
 
   var cardsHtml=bandOrder.map(function(band){
     var rows=bands[band].map(function(k){
-      var c=(liveArg&&liveArg.classrooms&&liveArg.classrooms[k])||D.classrooms[k];
+      var c=liveArg&&liveArg.classrooms&&liveArg.classrooms[k];
       var isZero=!c||c.total===0;
       var cardClass='card'+(isZero?' card-zero':'');
       var tot=isZero?0:c.total;
@@ -1893,7 +1926,7 @@ function renderIncidentList(rows, container, onAfterEdit){
 
 function openDet(id,live){
   var LD=live||{};
-  var c=(LD.classrooms&&LD.classrooms[id])||D.classrooms[id];
+  var c=LD.classrooms&&LD.classrooms[id];
   var isZero=!c||c.total===0;
   var backBtn=el('btn-det-back');
   if(backBtn) backBtn.textContent=DET_PREV_SCREEN==='S-teacher'?'‹ My Logs':'‹ Classes';
@@ -1904,7 +1937,7 @@ function openDet(id,live){
     el('det-body').innerHTML=
       '<div class="empty" style="padding-top:36px">'+
       '<div class="empty-t">No incidents logged</div>'+
-      '<div class="empty-s">No specials incidents were recorded for this classroom during Jan 21 – Apr 1, 2026.<br><br>This may reflect genuinely smooth sessions, inconsistent logging, or limited specials overlap. It is not confirmation of no issues.</div></div>'+
+      '<div class="empty-s">No specials incidents were recorded for this classroom in the current live data.</div></div>'+
       '<div style="height:16px"></div>';
     wireStudentLinks(el('det-body'),'S-detail');
   showScreen('S-detail');
@@ -1923,7 +1956,7 @@ function openDet(id,live){
 
   var summBlock='<div class="det-summary">'+
     '<div class="ds-item"><div class="ds-lbl">Top behavior</div><div class="ds-val hi">'+topBeh+'</div></div>'+
-    '<div class="ds-item"><div class="ds-lbl">Highest-repeat student</div><div class="ds-val hi">'+topStu+'</div></div>'+
+    '<div class="ds-item"><div class="ds-lbl">Highest-repeat scholar</div><div class="ds-val hi">'+topStu+'</div></div>'+
     '<div class="ds-item"><div class="ds-lbl">Top subject</div><div class="ds-val hi">'+topSpec+'</div></div>'+
     '<div class="ds-item"><div class="ds-lbl">Chart use · Home contact</div><div class="ds-val hi">'+c.chart+'% · '+c.home+'%</div></div>'+
     '</div>';
@@ -1937,7 +1970,7 @@ function openDet(id,live){
     '<div class="kpi"><div class="lbl">Subjects logged</div><div class="val">'+Object.keys(c.specials).filter(function(k){return c.specials[k]>0;}).length+'</div></div></div>'+
     '<div class="sec">Behavior types</div><div class="card">'+
     c.behaviors.map(function(b,i){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+displayBehavior(b.t)+'</span><span style="font-family:DM Mono,monospace">'+b.n+'</span></div>'+pb((b.n/mxB)*100,SER[i%SER.length])+'</div>';}).join('')+'</div>'+
-    '<div class="sec">Students</div><div class="card">'+
+    '<div class="sec">Scholars</div><div class="card">'+
     c.students.map(function(s){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+(s.name==='Other'?'var(--text2)':'var(--text)')+'">'+stuNameLink(s.name)+'</span><span style="font-family:DM Mono,monospace;color:'+(s.n>=5?'var(--red)':s.n>=3?'var(--amber)':'var(--text2)')+'">'+s.n+'</span></div>'+pb((s.n/mxS)*100,s.name==='Other'?'var(--text3)':s.n>=5?'var(--red)':s.n>=3?'var(--amber)':'var(--accent)')+'</div>';}).join('')+'</div>'+
     '<div class="sec">By subject</div><div class="card">'+
     Object.keys(c.specials).map(function(s){var n=c.specials[s];return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+(SC[s]||'var(--text2)')+'">'+s+'</span><span style="font-family:DM Mono,monospace">'+n+'</span></div>'+pb((n/mxSP)*100,SC[s]||'var(--text3)')+'</div>';}).join('')+'</div>'+
@@ -1979,9 +2012,11 @@ function openDet(id,live){
 function drawCharts(){
   var t=STATE.adminTab;
   if(t==='overview'){
-    var liveWk=(STATE.liveRows.length&&buildLiveStats(STATE.liveRows)||{}).weekly||D.weekly;
-    drawLine('c-wk',liveWk.map(function(d){return d.w;}),liveWk.map(function(d){return d.r;}));
-    drawBar('c-gr',D.grades.map(function(d){return d.g;}),D.grades.map(function(d){return d.n;}),D.grades.map(function(d,i){return SER[i];}));
+    var liveStats=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;
+    var liveWk=(liveStats&&liveStats.weekly)||[];
+    if(liveWk.length) drawLine('c-wk',liveWk.map(function(d){return d.w;}),liveWk.map(function(d){return d.r;}));
+    var liveGrades=(liveStats&&liveStats.grades)||[];
+    if(liveGrades.length) drawBar('c-gr',liveGrades.map(function(d){return d.g;}),liveGrades.map(function(d){return d.n;}),liveGrades.map(function(d,i){return SER[i];}));
   }
   if(t==='timing'){
     var rows=STATE.liveRows||[];
@@ -2009,7 +2044,9 @@ function drawLine(id,labels,d1){
   var ctx=cv.getContext('2d'),W=cv.offsetWidth||280,H=80,dpr=window.devicePixelRatio||1;
   cv.width=W*dpr;cv.height=H*dpr;cv.style.height=H+'px';ctx.scale(dpr,dpr);
   var p={l:4,r:4,t:10,b:22},cw=W-p.l-p.r,ch=H-p.t-p.b;
-  var mx=Math.max.apply(null,d1)*1.2;
+  var avgStats=STATE.liveRows.length?buildLiveStats(STATE.liveRows):null;
+  var avgLine=avgStats&&avgStats.per_day!=='—'?parseFloat(avgStats.per_day):0;
+  var mx=Math.max(Math.max.apply(null,d1),avgLine||0)*1.2;
   // add EOG future weeks to labels for context
   var eogLabels=labels.concat(['May W18','May W20','May W21']);
   var allLen=eogLabels.length;
@@ -2019,7 +2056,7 @@ function drawLine(id,labels,d1){
   ctx.strokeStyle='rgba(0,230,200,.06)';ctx.lineWidth=.5;
   [2,4,6,8,10].forEach(function(v){if(v<=mx){ctx.beginPath();ctx.moveTo(p.l,yi(v));ctx.lineTo(p.l+cw,yi(v));ctx.stroke();}});
   ctx.strokeStyle='rgba(0,230,200,.14)';ctx.lineWidth=1;ctx.setLineDash([2,4]);
-  ctx.beginPath();ctx.moveTo(p.l,yi(5.5));ctx.lineTo(p.l+cw,yi(5.5));ctx.stroke();ctx.setLineDash([]);
+  if(avgLine){ctx.beginPath();ctx.moveTo(p.l,yi(avgLine));ctx.lineTo(p.l+cw,yi(avgLine));ctx.stroke();}ctx.setLineDash([]);
   // EOG shaded region — last 2 label slots
   var eogStart=xi(allLen-2),eogEnd=xi(allLen-1)+4;
   ctx.fillStyle='rgba(240,192,64,0.07)';
@@ -2042,7 +2079,7 @@ function drawLine(id,labels,d1){
   // show subset of labels across full range
   var step=Math.ceil(allLen/6);
   for(var i=0;i<allLen;i+=step){ctx.fillText(eogLabels[i].replace(/\w+ /,''),xi(i),H-4);}
-  ctx.fillStyle='rgba(0,230,200,.4)';ctx.font="8px DM Mono,monospace";ctx.textAlign='right';ctx.fillText('avg 5.5',p.l+cw,yi(5.5)-3);
+  ctx.fillStyle='rgba(0,230,200,.4)';ctx.font="8px DM Mono,monospace";ctx.textAlign='right';if(avgLine) ctx.fillText('avg '+avgLine.toFixed(1),p.l+cw,yi(avgLine)-3);
 }
 function drawBar(id,labels,data,colors){
   var cv=el(id);if(!cv)return;
@@ -2138,10 +2175,10 @@ el('es-save').addEventListener('click',function(){
   };
   if(!updates.student){status.textContent='Scholar name required';status.style.color='var(--red)';return;}
 
-  function resetBtn(){saveBtn.textContent='[ Save changes ]';saveBtn.disabled=false;}
+  function resetSaveBtn(){saveBtn.textContent='[ Save changes ]';saveBtn.disabled=false;}
   function onSaved(){
     var cb=EDIT_STATE.onAfterEdit;
-    resetBtn();
+    resetSaveBtn();
     closeEditSheet();
     STATE.myDbLogs=STATE.myDbLogs.map(function(row){
       if(String(row.id)===String(EDIT_STATE.dbId)){
@@ -2157,7 +2194,7 @@ el('es-save').addEventListener('click',function(){
   saveBtn.textContent='[ Saving… ]';saveBtn.disabled=true;status.textContent='';
 
   if(EDIT_STATE.dbId){
-    if(!SESSION.token){status.textContent='Not signed in';status.style.color='var(--red)';resetBtn();return;}
+    if(!SESSION.token){status.textContent='Not signed in';status.style.color='var(--red)';resetSaveBtn();return;}
     fetch(SB_URL+'/rest/v1/incidents?id=eq.'+EDIT_STATE.dbId,{
       method:'PATCH',
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token,'Content-Type':'application/json','Prefer':'return=minimal'},
@@ -2182,7 +2219,7 @@ el('es-save').addEventListener('click',function(){
     }).catch(function(err){
       status.textContent=err.message||'Save failed';
       status.style.color='var(--red)';
-      resetBtn();
+      resetSaveBtn();
     });
   } else {
     // session-only log
@@ -2199,11 +2236,11 @@ el('es-save').addEventListener('click',function(){
 // ── DELETE CONFIRM EVENTS ──
 el('del-cancel-btn').addEventListener('click',closeDelConfirm);
 el('del-go-btn').addEventListener('click',function(){
-  function resetBtn(){el('del-go-btn').textContent='[ Delete ]';el('del-go-btn').disabled=false;}
-  if(!DEL_STATE.dbId){resetBtn();closeDelConfirm();return;}
+  function resetDeleteBtn(){el('del-go-btn').textContent='[ Delete ]';el('del-go-btn').disabled=false;}
+  if(!DEL_STATE.dbId){resetDeleteBtn();closeDelConfirm();return;}
   el('del-go-btn').textContent='[ Deleting… ]';
   el('del-go-btn').disabled=true;
-  if(!SESSION.token){resetBtn();closeDelConfirm();return;}
+  if(!SESSION.token){resetDeleteBtn();closeDelConfirm();return;}
   fetch(SB_URL+'/rest/v1/incidents?id=eq.'+DEL_STATE.dbId,{
     method:'DELETE',
     headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token,'Prefer':'return=minimal'}
@@ -2212,12 +2249,12 @@ el('del-go-btn').addEventListener('click',function(){
     STATE.myDbLogs=STATE.myDbLogs.filter(function(row){return String(row.id)!==String(DEL_STATE.dbId);});
     if(STATE.currentScreen==='S-admin'){STATE.liveLoaded=false;STATE.liveRows=[];}
     var cb=DEL_STATE.onAfterDelete;
-    resetBtn();
+    resetDeleteBtn();
     closeDelConfirm();
     if(cb){ try{cb();}catch(e){console.error(e);} }
     else renderHistory();
   }).catch(function(){
-    resetBtn();
+    resetDeleteBtn();
     closeDelConfirm();
   });
 });
@@ -2290,7 +2327,7 @@ initPwa();
 initFreshness();
 
 export {
-  SESSION, STATE, D, ALL_CLASSES, BAND_LABELS, BEHAVIORS, HOMEROOMS, SER, SC,
+  SESSION, STATE, ALL_CLASSES, BAND_LABELS, BEHAVIORS, HOMEROOMS, SER, SC,
   todayStr, nowStr, freshEntry,
   saveSession, loadSession, refreshSession, signOut,
   initLogin, fetchRole,
