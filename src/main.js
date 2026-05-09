@@ -252,7 +252,7 @@ function emailToDisplayName(email){
 }
 
 
-var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login',firstAidRows:[],firstAidLoaded:false,firstAidError:false};
+var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login',firstAidRows:[],firstAidLoaded:false,firstAidError:false,faFilterSpecials:'all',faFilterHome:'all'};
 var STU_PREV_SCREEN='S-detail';
 var DET_PREV_SCREEN='S-classes';
 function setStuPrevScreen(v){ STU_PREV_SCREEN=v||'S-detail'; }
@@ -1132,6 +1132,22 @@ function renderAdmin(){
   body.innerHTML=content;
   if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">⚠ Could not reach Supabase — showing cached data</div>'+body.innerHTML;
   if(t==='students') wireStudentLinks(body,'S-admin');
+  if(t==='firstaid') {
+    body.querySelectorAll('[data-fa-spec]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        STATE.faFilterSpecials = btn.dataset.faSpec;
+        renderAdmin();
+      });
+    });
+    body.querySelectorAll('[data-fa-home]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        STATE.faFilterHome = btn.dataset.faHome;
+        renderAdmin();
+      });
+    });
+  }
   setTimeout(drawCharts,60);
   body.querySelectorAll('[data-cls]').forEach(function(r){r.addEventListener('click',function(){openDet(r.dataset.cls,live);});});
 }
@@ -1156,17 +1172,110 @@ function fetchFirstAid(cb){
     if(cb) cb(err, []);
   });
 }
-function bFA(){
-  if(!STATE.firstAidLoaded){
-    fetchFirstAid(function(){ renderAdmin(); });
+function bFA() {
+  if (!STATE.firstAidLoaded) {
+    fetchFirstAid(function () { renderAdmin(); });
     return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">Loading first aid log…</div>';
   }
-  if(STATE.firstAidError) return '<div class="card" style="text-align:center;padding:32px 0;color:var(--red);font-size:12px">Could not load first aid records. Check connection and try again.</div>';
-  var rows=STATE.firstAidRows||[];
-  if(!rows.length) return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No first aid records found.</div>';
-  return '<div class="sec">First Aid</div><div class="card" style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="text-align:left;color:var(--text2)"><th style="padding:6px">Scholar</th><th style="padding:6px">Homeroom</th><th style="padding:6px">Date</th><th style="padding:6px">Injury</th><th style="padding:6px">Treatment</th><th style="padding:6px">Home contacted</th></tr></thead><tbody>'+
-    rows.map(function(r){return '<tr style="border-top:0.5px solid var(--border)"><td style="padding:6px">'+escHtml(r.student||'—')+'</td><td style="padding:6px">'+escHtml(r.homeroom||'—')+'</td><td style="padding:6px">'+escHtml(r.incident_date||'—')+'</td><td style="padding:6px">'+escHtml(r.injury_description||'—')+'</td><td style="padding:6px">'+escHtml(r.treatment||'—')+'</td><td style="padding:6px">'+(r.home_contact?'Yes':'No')+'</td></tr>';}).join('')+
-    '</tbody></table></div>';
+  if (STATE.firstAidError) {
+    return '<div class="card" style="text-align:center;padding:32px 0;color:var(--red);font-size:12px">Could not load first aid records. Check connection and try again.<br><br><button class="pill" onclick="STATE.firstAidLoaded=false;STATE.firstAidError=false;renderAdmin()">↺ Retry</button></div>';
+  }
+
+  var all = STATE.firstAidRows || [];
+  if (!all.length) return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No first aid records found.</div>';
+
+  // Read active filters from DOM (default: all)
+  var activeSpecials = STATE.faFilterSpecials || 'all';
+  var activeHome     = STATE.faFilterHome     || 'all';
+
+  // Apply filters
+  var rows = all.filter(function (r) {
+    var passSpecials = activeSpecials === 'all' || (r.specials || '') === activeSpecials;
+    var passHome     = activeHome === 'all'
+      || (activeHome === 'yes' && r.home_contact)
+      || (activeHome === 'no'  && !r.home_contact);
+    return passSpecials && passHome;
+  });
+
+  // KPI calculations
+  var total      = all.length;
+  var homeYes    = all.filter(function (r) { return r.home_contact; }).length;
+  var returnedYes= all.filter(function (r) { return r.returned_to_activity; }).length;
+  var homePct    = total ? Math.round(homeYes / total * 100) : 0;
+  var returnPct  = total ? Math.round(returnedYes / total * 100) : 0;
+
+  // Build specials filter pills
+  var specials = ['all','PE','Art','Technology','Music'];
+  var homePills = [['all','All'],['yes','Home ✓'],['no','No contact']];
+
+  var filterBar =
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center">' +
+      '<span style="font-size:10px;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;margin-right:4px">Specials</span>' +
+      specials.map(function (s) {
+        var on = s === activeSpecials;
+        return '<button class="pill fa-filter" data-fa-spec="' + s + '" style="' +
+          (on ? 'background:var(--teal);color:#0a0a0f;' : '') + '">' +
+          (s === 'all' ? 'All' : s) + '</button>';
+      }).join('') +
+      '<span style="font-size:10px;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;margin:0 4px 0 12px">Home</span>' +
+      homePills.map(function (p) {
+        var on = p[0] === activeHome;
+        return '<button class="pill fa-filter" data-fa-home="' + p[0] + '" style="' +
+          (on ? 'background:var(--teal);color:#0a0a0f;' : '') + '">' + p[1] + '</button>';
+      }).join('') +
+    '</div>';
+
+  // Build expandable cards
+  var cards = rows.length
+    ? rows.map(function (r, i) {
+        var id = 'fa-card-' + i;
+        return '<div class="card" id="' + id + '" style="margin-bottom:8px;cursor:pointer;padding:12px 14px" onclick="toggleFA(\'' + id + '\')">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center">' +
+            '<div>' +
+              '<span style="font-size:13px;font-weight:600;color:var(--text)">' + escHtml(r.student || '—') + '</span>' +
+              '<span style="font-size:11px;color:var(--teal);margin-left:8px">' + escHtml(r.specials || '') + '</span>' +
+              '<span style="font-size:11px;color:var(--text3);margin-left:8px">' + escHtml(r.incident_date || '') + '</span>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;align-items:center">' +
+              (r.home_contact ? '<span style="font-size:10px;color:var(--teal);letter-spacing:.04em">Home ✓</span>' : '<span style="font-size:10px;color:var(--text3)">—</span>') +
+              (r.returned_to_activity ? '<span style="font-size:10px;color:var(--teal)">Returned ✓</span>' : '<span style="font-size:10px;color:var(--red)">Did not return</span>') +
+              '<span class="fa-chevron" style="color:var(--text3);font-size:14px;transition:transform .2s">›</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="fa-detail" style="display:none;margin-top:12px;padding-top:12px;border-top:0.5px solid var(--border)">' +
+            '<div style="font-size:11px;color:var(--text2);margin-bottom:4px"><span style="color:var(--text3)">Injury: </span>' + escHtml(r.injury_description || '—') + '</div>' +
+            '<div style="font-size:11px;color:var(--text2);margin-bottom:4px"><span style="color:var(--text3)">Treatment: </span>' + escHtml(r.treatment || '—') + '</div>' +
+            (r.staff_notified ? '<div style="font-size:11px;color:var(--text2);margin-bottom:4px"><span style="color:var(--text3)">Staff notified: </span>' + escHtml(r.staff_notified) + '</div>' : '') +
+            (r.homeroom ? '<div style="font-size:11px;color:var(--text2);margin-bottom:4px"><span style="color:var(--text3)">Homeroom: </span>' + escHtml(r.homeroom) + '</div>' : '') +
+            (r.notes ? '<div style="font-size:11px;color:var(--text2);margin-top:6px;line-height:1.6">' + escHtml(r.notes) + '</div>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('')
+    : '<div style="text-align:center;padding:24px 0;color:var(--text3);font-size:12px">No records match this filter.</div>';
+
+  return '<div class="sec">First Aid / Injury Log</div>' +
+    '<div class="kpi-grid" style="margin-bottom:12px">' +
+      kpiH('Total incidents', total, 'all time', false) +
+      kpiH('Home contacted', homePct + '%', homeYes + ' of ' + total, homePct < 50) +
+      kpiH('Returned to activity', returnPct + '%', returnedYes + ' of ' + total, returnPct < 80) +
+    '</div>' +
+    filterBar +
+    cards;
+}
+
+// Toggle expand/collapse for a first aid card
+function toggleFA(id) {
+  var card = document.getElementById(id);
+  if (!card) return;
+  var detail  = card.querySelector('.fa-detail');
+  var chevron = card.querySelector('.fa-chevron');
+  var open    = detail.style.display !== 'none';
+  detail.style.display  = open ? 'none' : 'block';
+  if (chevron) {
+    chevron.style.transform = open ? '' : 'rotate(90deg)';
+    chevron.textContent     = open ? '›' : '›';
+  }
+  card.style.borderLeft = open ? '' : '2px solid var(--teal)';
 }
 
 function bOV(live){
