@@ -133,11 +133,11 @@ function openStudent(name, prevScreen){
         '<div class="card" style="margin-bottom:10px">'+
           '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Admin notes</div>'+
           '<textarea id="stu-notes-ta" style="width:100%;min-height:88px;background:var(--panel);border:0.5px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit"></textarea>'+
-          '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="pill" id="stu-save-note">[ Save note ]</button></div>'+
+          '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="pill" id="stu-save-note">Save note</button></div>'+
           '<div id="stu-note-status" style="font-size:10px;color:var(--text3);margin-top:6px"></div>'+
         '</div>'
       : '')+
-      '<div class="sec" style="display:flex;justify-content:space-between;align-items:center">All incidents <span id="stu-inc-meta" style="font-size:10px;color:var(--text3);font-family:DM Mono,monospace"></span></div>'+
+      '<div class="sec" style="display:flex;justify-content:space-between;align-items:center">All incidents <span id="stu-inc-meta" style="font-size:10px;color:var(--text3);font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"></span></div>'+
       '<div id="stu-inc-list"></div>'+
       '<div style="margin:14px 0;border-top:0.5px solid var(--border)"></div>'+
       '<div class="sec">First Aid / Injury Log</div>'+
@@ -157,7 +157,7 @@ function openStudent(name, prevScreen){
           saveBtn.textContent = '[ Saving… ]';
           saveStudentNote(name, ta ? ta.value : '', function(e2){
             saveBtn.disabled = false;
-            saveBtn.textContent = '[ Save note ]';
+            saveBtn.textContent = 'Save note';
             if(st) st.textContent = e2 ? 'Save failed' : 'Saved';
           });
         });
