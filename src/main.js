@@ -207,9 +207,11 @@ var SC={'PE':'#271A70','Technology':'#BFA95F','Art':'#98A2AD','Music':'#271A70',
 
 
 function scholarBarColor(count){
-  if(count>=7) return '#271A70';
+  var theme=document.documentElement.getAttribute('data-theme');
+  var isDark=theme==='dark';
+  if(count>=7) return isDark?'#8A7BE0':'#271A70';
   if(count>=4) return '#BFA95F';
-  return '#98A2AD';
+  return isDark?'#6A7680':'#98A2AD';
 }
 function subjectBarColor(index){
   return index%2===0?'#271A70':'#BFA95F';
@@ -1764,7 +1766,7 @@ function bST(live){
   if(!stuList.length) return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
   var mx=stuList[0].n||1;
   return '<div class="sec">Scholars with 4+ logged incidents</div><div class="card">'+
-    stuList.map(function(s){return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+stuNameLink(s.name)+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;font-weight:500;color:'+scholarBarColor(s.n)+'">'+s.n+'</span></div>'+pb((s.n/mx)*100,scholarBarColor(s.n))+'</div>';}).join('')+'</div>';
+    stuList.map(function(s){return '<div class="li" data-scholar-row="1"><div class="li-c"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span class="scholar-name">'+stuNameLink(s.name)+'</span><span class="inc-count" style="color:'+scholarBarColor(s.n)+'">'+s.n+'</span></div>'+pb((s.n/mx)*100,scholarBarColor(s.n))+'</div></div>';}).join('')+'</div>';
 }
 function bCL(live){
   var LD=live||{};
@@ -1772,7 +1774,7 @@ function bCL(live){
   if(!sorted.length) return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
   var mx=sorted[0].n||1;
   return '<div class="sec">All classrooms · sorted by incident count</div><div class="card">'+
-    sorted.map(function(c,i){var det=(LD.classrooms&&LD.classrooms[c.cls])||{};return '<div class="li" data-cls="'+c.cls+'"><div class="li-c"><div class="li-t">'+c.cls+'</div><div class="li-s">Chart: '+(det.chart!=null?det.chart:'—')+'% · Home: '+(det.home!=null?det.home:0)+'%</div>'+pb((c.n/mx)*100,'#271A70')+'</div><div class="li-r" style="color:var(--text2);margin-left:10px">'+c.n+'</div><div style="color:var(--text3);font-size:18px"></div></div>';}).join('')+'</div>';
+    sorted.map(function(c,i){var det=(LD.classrooms&&LD.classrooms[c.cls])||{};return '<div class="li" data-cls="'+c.cls+'"><div class="li-c"><div class="li-t">'+c.cls+'</div><div class="li-s">Chart: '+(det.chart!=null?det.chart:'—')+'% · Home: '+(det.home!=null?det.home:0)+'%</div>'+pb((c.n/mx)*100,scholarBarColor(c.n))+'</div><div class="li-r inc-count" style="margin-left:10px">'+c.n+'</div><div style="color:var(--text3);font-size:18px"></div></div>';}).join('')+'</div>';
 }
 
 // ── CLASS EXPLORER ──
@@ -2051,7 +2053,7 @@ function openDet(id,live){
     '<div class="sec">Behavior types</div><div class="card">'+
     c.behaviors.map(function(b,i){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+displayBehavior(b.t)+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">'+b.n+'</span></div>'+pb((b.n/mxB)*100,BEHAVIOR_COLORS[i%BEHAVIOR_COLORS.length])+'</div>';}).join('')+'</div>'+
     '<div class="sec">Scholars</div><div class="card">'+
-    c.students.map(function(s){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+(s.name==='Other'?'var(--text2)':'var(--text)')+'">'+stuNameLink(s.name)+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;color:'+scholarBarColor(s.n)+'">'+s.n+'</span></div>'+pb((s.n/mxS)*100,s.name==='Other'?'#98A2AD':scholarBarColor(s.n))+'</div>';}).join('')+'</div>'+
+    c.students.map(function(s){return '<div class="li" data-scholar-row="1"><div class="li-c"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span class="scholar-name" style="color:'+(s.name==='Other'?'var(--text2)':'var(--text)')+'">'+stuNameLink(s.name)+'</span><span class="inc-count" style="color:'+scholarBarColor(s.n)+'">'+s.n+'</span></div>'+pb((s.n/mxS)*100,s.name==='Other'?'#98A2AD':scholarBarColor(s.n))+'</div></div>';}).join('')+'</div>'+
     '<div class="sec">By subject</div><div class="card">'+
     Object.keys(c.specials).map(function(s,i){var n=c.specials[s],col=subjectBarColor(i);return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+col+'">'+s+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">'+n+'</span></div>'+pb((n/mxSP)*100,col)+'</div>';}).join('')+'</div>'+
     '<div class="sec">Weekly trend</div><div class="card"><canvas id="c-det-wk" height="80" style="width:100%;display:block"></canvas></div>'+
