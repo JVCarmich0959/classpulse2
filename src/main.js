@@ -90,9 +90,10 @@ function refreshSession(cb){
 function authedFetch(path, opts){
   if(!SESSION.token){ return Promise.reject(new Error('Not authenticated')); }
   var tok = SESSION.token;
-  return fetch(SB_URL + path, Object.assign({
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok,'Content-Type':'application/json'}
-  }, opts || {})).then(function(r){
+  var baseHeaders = {'apikey':SB_KEY,'Authorization':'Bearer '+tok,'Content-Type':'application/json'};
+  var mergedOpts = Object.assign({}, opts || {});
+  mergedOpts.headers = Object.assign({}, baseHeaders, (opts && opts.headers) || {});
+  return fetch(SB_URL + path, mergedOpts).then(function(r){
     if(r.status === 401){
       return new Promise(function(res,rej){refreshSession(function(ok){if(ok)res(authedFetch(path,opts));else{signOut();rej(new Error('Session expired'));}});});
     }
@@ -963,7 +964,7 @@ function checkAndNotify(entry, transitionId){
       notifications.forEach(function(n){
         authedFetch('/rest/v1/staff_notifications',{
           method:'POST',
-          headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+          headers:{'Prefer':'return=minimal'},
           body:JSON.stringify(n)
         }).catch(function(err){console.warn('Notification insert failed',err);});
       });
@@ -1013,9 +1014,9 @@ function markAllNotifsRead(){
   (STATE.notifRows||[]).forEach(function(n){
     var readBy=Array.isArray(n.read_by)?n.read_by:[];
     if(readBy.indexOf(SESSION.email)!==-1) return;
-    authedFetch('/rest/v1/staff_notifications?id=eq.'+encodeURIComponent(n.id),{
+    authedFetch('/rest/v1/staff_notifications?id=eq.'+n.id,{
       method:'PATCH',
-      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+      headers:{'Prefer':'return=minimal'},
       body:JSON.stringify({read_by:readBy.concat([SESSION.email])})
     }).catch(function(){});
   });
@@ -1085,7 +1086,7 @@ function attachSL(){
         };
         return authedFetch('/rest/v1/color_transitions',{
           method:'POST',
-          headers:{'Content-Type':'application/json','Prefer':'return=representation'},
+          headers:{'Prefer':'return=representation'},
           body:JSON.stringify(transition)
         }).then(function(tr){
           if(!tr.ok) throw new Error('HTTP '+tr.status);
