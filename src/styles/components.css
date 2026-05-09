@@ -5,3 +5,13 @@
   text-decoration-color: rgba(0,230,200,.45);
   text-underline-offset: 2px;
 }
+
+.scholar-ac-wrap{position:relative}
+.scholar-ac{display:none;position:absolute;left:0;right:0;top:100%;z-index:30;margin-top:4px;background:#13131f;border:1px solid #1e1e2e;border-radius:var(--rs);overflow:hidden;box-shadow:0 12px 26px rgba(0,0,0,.38)}
+.scholar-ac.show{display:block}
+.scholar-ac-row{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:transparent;border:0;border-bottom:1px solid rgba(30,30,46,.9);padding:10px 12px;cursor:pointer;font-family:DM Mono,monospace;text-align:left;color:var(--text)}
+.scholar-ac-row:last-child{border-bottom:0}
+.scholar-ac-row:hover,.scholar-ac-row.active{background:rgba(0,230,200,.1);outline:1px solid rgba(0,230,200,.35)}
+.scholar-ac-name{display:flex;align-items:center;gap:6px;min-width:0;color:#fff;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scholar-ac-room{color:#5cb8a0;font-size:11px;white-space:nowrap}
+.scholar-ac-arrow{color:#00e6c8;font-size:13px;line-height:1}
