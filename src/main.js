@@ -204,6 +204,8 @@ function getSubmitterDisplay(email, subject){
   return '';
 }
 var SC={'PE':'#271A70','Technology':'#BFA95F','Art':'#98A2AD','Music':'#271A70','P.E.':'#271A70'};
+var NOTIF_SCHOOL_YEAR=import.meta.env.VITE_SCHOOL_YEAR||'2025-2026';
+var NOTIF_SCHOOL_ID=import.meta.env.VITE_SCHOOL_ID||'wayne-stem';
 
 
 function scholarBarColor(count){
@@ -291,7 +293,7 @@ function emailToDisplayName(email){
 }
 
 
-var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login',firstAidRows:[],firstAidLoaded:false,firstAidError:false,faFilterSpecials:'all',faFilterHome:'all'};
+var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login',firstAidRows:[],firstAidLoaded:false,firstAidError:false,faFilterSpecials:'all',faFilterHome:'all',notifRows:[],notifLoaded:false,notifPollTimer:null};
 var STU_PREV_SCREEN='S-detail';
 var DET_PREV_SCREEN='S-classes';
 function setStuPrevScreen(v){ STU_PREV_SCREEN=v||'S-detail'; }
@@ -299,7 +301,7 @@ function getStuPrevScreen(){ return STU_PREV_SCREEN||'S-detail'; }
 function setDetPrevScreen(v){ DET_PREV_SCREEN=v||'S-classes'; }
 function todayStr(){return new Date().toISOString().split('T')[0];}
 function nowStr(){var d=new Date();return d.toTimeString().slice(0,5);}
-function freshEntry(){return{studentName:'',homeroom:'',specials:'',behaviors:[],date:todayStr(),time:nowStr(),colorChart:false,homeContact:false,motivation:'',contactMethod:'',notes:''};}
+function freshEntry(){return{studentName:'',homeroom:'',specials:'',behaviors:[],date:todayStr(),time:nowStr(),colorChart:false,colorTransition:'',colorResolved:false,homeContact:false,motivation:'',contactMethod:'',notes:''};}
 function el(id){return document.getElementById(id);}
 function pb(pct,col){return '<div class="pbar"><div style="--pw:'+Math.min(pct,100)+'%;background:'+col+'" class="pfill"></div></div>';}
 var INSTALL_PROMPT_EVENT=null;
@@ -715,7 +717,7 @@ function updateTeacherNav(){
   if(sw) sw.style.display = SESSION.role === 'admin' ? '' : 'none';
 }
 
-function goAdmin(){updateUserDisplay();showScreen('S-admin');STATE.adminTab='overview';document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='overview');});renderAdmin();updateLogBadge();}
+function goAdmin(){updateUserDisplay();showScreen('S-admin');STATE.adminTab='overview';document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='overview');});startNotifPolling();renderAdmin();updateLogBadge();}
 function showPane(pane){
   el('T-log').style.display=pane==='log'?'flex':'none';
   el('T-hist').style.display=pane==='hist'?'flex':'none';
@@ -763,6 +765,28 @@ function bS4(){
     '<div class="tog-row"><div><div class="tog-lbl">Color chart used</div><div class="tog-sub">Behavior chart shown to student</div></div>'+
     '<label class="tog"><input type="checkbox" id="f-chart"'+(STATE.entry.colorChart?' checked':'')+'>'+
     '<div class="tog-track"></div><div class="tog-thumb"></div></label></div>'+
+    (STATE.entry.colorChart ?
+      '<div class="fg" style="margin-top:10px">'+
+        '<label class="fl">Color transition <span style="font-size:11px;color:var(--text3)">(required if chart used)</span></label>'+
+        '<div class="chips" id="color-chips">'+
+          ['Yellow','Orange','Red'].map(function(c){
+            var colors={Yellow:'#BFA95F',Orange:'#d4622a',Red:'#c0392b'};
+            var isOn=STATE.entry.colorTransition===c;
+            return '<button type="button" class="chip'+(isOn?' on':'')+'" data-color="'+c+'" '+
+              'style="border-color:'+colors[c]+';'+(isOn?'background:'+colors[c]+';color:#fff;':'color:'+colors[c]+';')+'">'+
+              c+'</button>';
+          }).join('')+
+        '</div>'+
+        '<div class="fg" style="margin-top:10px;'+(STATE.entry.colorTransition?'':'display:none')+'" id="resolved-wrap">'+
+          '<div class="tog-row">'+
+            '<div><div class="tog-lbl">Resolved — returned to Green</div>'+
+            '<div class="tog-sub">Scholar de-escalated and re-engaged</div></div>'+
+            '<label class="tog"><input type="checkbox" id="f-resolved"'+(STATE.entry.colorResolved?' checked':'')+'>'+
+            '<div class="tog-track"></div><div class="tog-thumb"></div></label>'+
+          '</div>'+
+        '</div>'+
+      '</div>'
+    : '')+
     '<div class="tog-row"><div><div class="tog-lbl">Home contacted</div><div class="tog-sub">Parent or guardian notified</div></div>'+
     '<label class="tog"><input type="checkbox" id="f-home"'+(STATE.entry.homeContact?' checked':'')+'>'+
     '<div class="tog-track"></div><div class="tog-thumb"></div></label></div></div>'+
@@ -881,6 +905,127 @@ function wireScholarAutocomplete(){
     scholarAc.docBound=true;
   }
 }
+
+function checkAndNotify(entry, transitionId){
+  if(!SESSION.token) return;
+  var student=entry.studentName;
+  var specials=entry.specials;
+  var today=todayStr();
+  var q='select=id,student,behaviors,color_chart&specials=eq.'+encodeURIComponent(specials)+
+    '&incident_date=eq.'+today+'&order=created_at.desc&limit=100';
+  authedFetch('/rest/v1/incidents?'+q).then(function(r){return r.json();})
+    .then(function(rows){
+      rows=Array.isArray(rows)?rows:[];
+      var notifications=[];
+      if(rows.length===4||rows.length===6||rows.length===8){
+        notifications.push({
+          type:'threshold_alert',
+          title:specials+' — '+rows.length+' incidents today',
+          body:rows.length+' behavioral incidents logged in '+specials+' today. Multiple scholars may need support. Consider checking in with '+getSubmitterDisplay(SESSION.email,specials)+'.',
+          student:null,
+          homeroom:entry.homeroom,
+          specials:specials,
+          severity:rows.length>=6?'critical':'warning',
+          school_year:NOTIF_SCHOOL_YEAR,
+          school_id:NOTIF_SCHOOL_ID
+        });
+      }
+      if(entry.colorTransition==='Red'){
+        notifications.push({
+          type:'color_red',
+          title:student+' — reached Red',
+          body:student+' ('+entry.homeroom+') reached Red in '+specials+'. Write-up required. Consider preventative check-in before next class period.',
+          student:student,
+          homeroom:entry.homeroom,
+          specials:specials,
+          transition_id:transitionId||null,
+          severity:'critical',
+          school_year:NOTIF_SCHOOL_YEAR,
+          school_id:NOTIF_SCHOOL_ID
+        });
+      }
+      var hasPhysical=entry.behaviors&&entry.behaviors.some(function(b){
+        return b==='Physical behavior'||b==='Rough Housing / Horseplay';
+      });
+      if(hasPhysical){
+        notifications.push({
+          type:'physical',
+          title:student+' — physical behavior',
+          body:student+' ('+entry.homeroom+') had a physical behavior incident in '+specials+'.',
+          student:student,
+          homeroom:entry.homeroom,
+          specials:specials,
+          severity:'warning',
+          school_year:NOTIF_SCHOOL_YEAR,
+          school_id:NOTIF_SCHOOL_ID
+        });
+      }
+      notifications.forEach(function(n){
+        authedFetch('/rest/v1/staff_notifications',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+          body:JSON.stringify(n)
+        }).catch(function(err){console.warn('Notification insert failed',err);});
+      });
+      if(notifications.length&&SESSION.role==='admin'){
+        notifications.forEach(function(n){
+          showToast(n.title,n.severity==='critical'?'error':'info',5000);
+        });
+        fetchNotifications();
+      }
+    })
+    .catch(function(err){console.warn('checkAndNotify fetch failed',err);});
+}
+
+function fetchNotifications(cb){
+  if(!SESSION.token||SESSION.role!=='admin') return;
+  var q='select=*&order=created_at.desc&limit=50&school_year=eq.'+encodeURIComponent(NOTIF_SCHOOL_YEAR);
+  authedFetch('/rest/v1/staff_notifications?'+q)
+    .then(function(r){return r.json();})
+    .then(function(rows){
+      STATE.notifRows=Array.isArray(rows)?rows:[];
+      STATE.notifLoaded=true;
+      updateNotifBadge();
+      if(cb) cb(null,STATE.notifRows);
+    })
+    .catch(function(err){if(cb) cb(err,[]);});
+}
+
+function updateNotifBadge(){
+  var unread=(STATE.notifRows||[]).filter(function(n){
+    var readBy=Array.isArray(n.read_by)?n.read_by:[];
+    return readBy.indexOf(SESSION.email)===-1;
+  }).length;
+  var badge=document.getElementById('notif-badge');
+  if(badge){
+    badge.style.display=unread>0?'inline-flex':'none';
+    badge.textContent=unread>9?'9+':String(unread);
+  }
+}
+
+function startNotifPolling(){
+  if(STATE.notifPollTimer) clearInterval(STATE.notifPollTimer);
+  fetchNotifications();
+  STATE.notifPollTimer=setInterval(fetchNotifications,60000);
+}
+
+function markAllNotifsRead(){
+  (STATE.notifRows||[]).forEach(function(n){
+    var readBy=Array.isArray(n.read_by)?n.read_by:[];
+    if(readBy.indexOf(SESSION.email)!==-1) return;
+    authedFetch('/rest/v1/staff_notifications?id=eq.'+encodeURIComponent(n.id),{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({read_by:readBy.concat([SESSION.email])})
+    }).catch(function(){});
+  });
+  (STATE.notifRows||[]).forEach(function(n){
+    if(!Array.isArray(n.read_by)) n.read_by=[];
+    if(n.read_by.indexOf(SESSION.email)===-1) n.read_by.push(SESSION.email);
+  });
+  updateNotifBadge();
+}
+
 function attachSL(){
   var fn=el('f-name');if(fn)fn.addEventListener('input',function(){STATE.entry.studentName=fn.value;});
   var fhr=el('f-hr');if(fhr)fhr.addEventListener('change',function(){STATE.entry.homeroom=fhr.value;});
@@ -895,7 +1040,14 @@ function attachSL(){
   var ft=el('f-time');if(ft)ft.addEventListener('change',function(){STATE.entry.time=ft.value;});
   var s3b=el('s3-back');if(s3b)s3b.addEventListener('click',function(){STATE.step=1;renderStep();});
   var s3n=el('s3-next');if(s3n)s3n.addEventListener('click',function(){STATE.step=3;renderStep();});
-  var fc=el('f-chart');if(fc)fc.addEventListener('change',function(){STATE.entry.colorChart=fc.checked;});
+  var fc=el('f-chart');if(fc)fc.addEventListener('change',function(){STATE.entry.colorChart=fc.checked;if(!fc.checked){STATE.entry.colorTransition='';STATE.entry.colorResolved=false;}renderStep();});
+  document.querySelectorAll('[data-color]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      STATE.entry.colorTransition=btn.dataset.color;
+      renderStep();
+    });
+  });
+  var fres=el('f-resolved');if(fres)fres.addEventListener('change',function(){STATE.entry.colorResolved=fres.checked;});
   var fh=el('f-home');if(fh)fh.addEventListener('change',function(){STATE.entry.homeContact=fh.checked;renderStep();});
   document.querySelectorAll('[data-mot]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.motivation=STATE.entry.motivation===btn.dataset.mot?'':btn.dataset.mot;renderStep();});});
   document.querySelectorAll('[data-contact]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.contactMethod=STATE.entry.contactMethod===btn.dataset.contact?'':btn.dataset.contact;renderStep();});});
@@ -904,6 +1056,7 @@ function attachSL(){
   var sub=el('s4-sub');
   if(sub)sub.addEventListener('click',function(){
     var e=STATE.entry;
+    if(e.colorChart&&!e.colorTransition){alert('Please select a color transition.');return;}
     var extra=[];
     if(e.motivation) extra.push('Motivation: '+e.motivation);
     if(e.homeContact&&e.contactMethod) extra.push('Contact method: '+e.contactMethod);
@@ -915,7 +1068,38 @@ function attachSL(){
     showToast('Incident logged');
     el('sheet-detail').textContent=e.studentName+' · '+e.specials+' · '+(e.behaviors.length?e.behaviors.map(displayBehavior).join(', '):'—');
     el('T-sheet').classList.add('show');el('T-overlay').classList.add('show');
-    authedInsert(row).catch(function(err){console.warn('Supabase insert failed',err);showToast('Could not connect', 'error');});
+    authedInsert(row).then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      if(e.colorTransition){
+        var transition={
+          student:e.studentName,
+          homeroom:e.homeroom,
+          specials:e.specials,
+          from_color:'Green',
+          to_color:e.colorTransition,
+          notes:e.notes||'',
+          resolved_at:e.colorResolved?new Date().toISOString():null,
+          submitted_by:SESSION.email||'unknown',
+          school_year:NOTIF_SCHOOL_YEAR,
+          school_id:NOTIF_SCHOOL_ID
+        };
+        return authedFetch('/rest/v1/color_transitions',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','Prefer':'return=representation'},
+          body:JSON.stringify(transition)
+        }).then(function(tr){
+          if(!tr.ok) throw new Error('HTTP '+tr.status);
+          return tr.json();
+        }).then(function(rows){
+          var transitionId=rows&&rows[0]&&rows[0].id;
+          checkAndNotify(e,transitionId);
+        }).catch(function(err){
+          console.warn('Transition insert failed',err);
+          checkAndNotify(e,null);
+        });
+      }
+      checkAndNotify(e,null);
+    }).catch(function(err){console.warn('Supabase insert failed',err);showToast('Could not connect', 'error');});
   });
 }
 function closeSheet(){el('T-sheet').classList.remove('show');el('T-overlay').classList.remove('show');STATE.entry=freshEntry();STATE.step=0;renderStep();}
@@ -1397,6 +1581,7 @@ function renderAdmin(){
   else if(t==='coverage') content=bCV();
   else if(t==='students') content=bST(live);
   else if(t==='firstaid') content=bFA();
+  else if(t==='alerts') content=bAL();
   else content=bCL(live);
   body.innerHTML=content;
   if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">Error: Could not reach Supabase — showing cached data</div>'+body.innerHTML;
@@ -1408,6 +1593,16 @@ function renderAdmin(){
       si.addEventListener('input', function() { filterScholars(this.value); });
       if (window.innerWidth > 768) si.focus();
     }
+  }
+  if(t==='alerts') {
+    wireStudentLinks(body,'S-admin');
+  }
+  body.querySelectorAll('[data-alert-tab]').forEach(function(btn){
+    btn.addEventListener('click',function(){setTab(btn.dataset.alertTab);});
+  });
+  var notifBtn=document.getElementById('btn-notif');
+  if(notifBtn){
+    notifBtn.addEventListener('click',function(){setTab('alerts');});
   }
   if(t==='firstaid') {
     body.querySelectorAll('[data-fa-spec]').forEach(function(btn) {
@@ -1563,10 +1758,59 @@ function toggleFA(id) {
   card.style.borderLeft = open ? '' : '2px solid var(--indigo)';
 }
 
+
+function bAL(){
+  if(!STATE.notifLoaded){
+    fetchNotifications(function(){renderAdmin();});
+    return skeletonRows(5);
+  }
+  var rows=STATE.notifRows||[];
+  if(!rows.length) return emptyState('No alerts','Alerts appear here when incidents cross notification thresholds.');
+  markAllNotifsRead();
+  var severityColor={critical:'#c0392b',warning:'#BFA95F',info:'#271A70'};
+  var severityLabel={critical:'Critical',warning:'Warning',info:'Info'};
+  var cards=rows.map(function(n){
+    var color=severityColor[n.severity]||'#271A70';
+    var label=severityLabel[n.severity]||'Info';
+    var time=n.created_at?new Date(n.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+    var isRead=Array.isArray(n.read_by)&&n.read_by.indexOf(SESSION.email)!==-1;
+    return '<div class="card" style="margin-bottom:8px;border-left:3px solid '+color+';opacity:'+(isRead?'0.65':'1')+'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
+        '<div>'+
+          '<span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:'+color+'">'+escHtml(label)+'</span>'+
+          (n.student?'<span style="font-size:10px;color:var(--text3);margin-left:8px">'+escHtml(n.student)+' · '+escHtml(n.homeroom||'')+'</span>':'')+
+        '</div>'+
+        '<span style="font-size:10px;color:var(--text3);white-space:nowrap;margin-left:8px">'+escHtml(time)+'</span>'+
+      '</div>'+
+      '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">'+escHtml(n.title)+'</div>'+
+      '<div style="font-size:12px;color:var(--text2);line-height:1.6">'+escHtml(n.body)+'</div>'+
+      (n.student?
+        '<div style="margin-top:10px">'+
+          '<button class="pill" style="font-size:10px;padding:4px 10px" data-stu="'+escAttr(n.student)+'">'+
+            'View '+escHtml(String(n.student).split(' ')[0])+'\'s profile'+
+          '</button>'+
+        '</div>'
+      :'')+
+    '</div>';
+  }).join('');
+  return '<div class="sec">Staff Alerts</div>'+cards;
+}
+
 function bOV(live){
+  var criticalUnread=(STATE.notifRows||[]).filter(function(n){
+    var readBy=Array.isArray(n.read_by)?n.read_by:[];
+    return n.severity==='critical'&&readBy.indexOf(SESSION.email)===-1;
+  });
+  var alertStrip=criticalUnread.length?
+    '<div data-alert-tab="alerts" style="background:#fdf0ef;border-left:3px solid #c0392b;border-radius:8px;padding:10px 14px;margin-bottom:12px;cursor:pointer">'+
+      '<div style="font-size:11px;font-weight:700;color:#c0392b;letter-spacing:.04em;margin-bottom:3px">'+
+        criticalUnread.length+' unread critical alert'+(criticalUnread.length>1?'s':'')+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--text2)">'+escHtml(criticalUnread[0].title)+(criticalUnread.length>1?' and '+(criticalUnread.length-1)+' more...':'')+'</div>'+
+    '</div>':'';
   var LD=live||{};
   if(!LD.total){
-    return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
+    return alertStrip+'<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
   }
   var tot=LD.total+STATE.logs.length;
   var chartPct=Math.round((LD.chart_yes||0)/LD.total*100);
@@ -1574,7 +1818,7 @@ function bOV(live){
   var dateRange=LD.date_range||'No data';
   var uniqueDays=LD.unique_days||0;
   var perDay=LD.per_day||'—';
-  return '<div class="kpi-grid">'+
+  return alertStrip+'<div class="kpi-grid">' +
     kpiH('Total incidents',tot,dateRange,false)+
     kpiH('Per logged incident day',perDay,uniqueDays+' logged incident days',false)+
     kpiH('Color chart used',chartPct+'%',(LD.chart_yes||0)+' of '+LD.total+' incidents',false)+
@@ -2661,7 +2905,7 @@ export {
   wireHeatCard,
   openEditSheet, closeEditSheet, populateEditSheet, openDelConfirm, closeDelConfirm,
   renderStep, goTeacher, showPane, closeSheet, renderHistory, fetchMyLogs,
-  goAdmin, renderAdmin, setTab, bOV, bTM, bCV, bST, bCL,
+  goAdmin, renderAdmin, setTab, bOV, bAL, bTM, bCV, bST, bCL,
   renderClsExplorer, filterClasses, openDet, showScreen, escHtml,
   openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen, displayBehavior,
   skeletonRows, skeletonKpis, animateListIn, showToast, emptyState

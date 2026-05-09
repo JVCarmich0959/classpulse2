@@ -113,7 +113,7 @@
 
 <div id="S-admin" class="screen hidden">
   <div class="st"></div>
-  <div class="topbar"><div><h1>Dashboard</h1><div class="sub" id="admin-sub">Loading live data</div></div><div style="display:flex;gap:6px"><button class="pill" id="btn-theme-toggle" type="button" style="font-size:11px">[ Dark ]</button><button class="pill" id="btn-export" style="font-size:11px">CSV</button><button class="pill" id="btn-a-log">Log</button><button class="pill" id="btn-a-signout" style="color:var(--red);border-color:rgba(192,57,43,.3)">Sign out</button></div></div>
+  <div class="topbar"><div><h1>Dashboard</h1><div class="sub" id="admin-sub">Loading live data</div></div><div style="display:flex;gap:6px"><button class="pill" id="btn-theme-toggle" type="button" style="font-size:11px">[ Dark ]</button><button class="pill" id="btn-notif" style="position:relative;font-size:11px">Alerts<span id="notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:#c0392b;color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 4px;min-width:14px;text-align:center;line-height:14px"></span></button><button class="pill" id="btn-export" style="font-size:11px">CSV</button><button class="pill" id="btn-a-log">Log</button><button class="pill" id="btn-a-signout" style="color:var(--red);border-color:rgba(192,57,43,.3)">Sign out</button></div></div>
   <!-- freshness strip -->
   <div class="fresh-strip">
     <div class="fresh-dot"></div>
@@ -126,6 +126,7 @@
     <button class="tab" data-tab="coverage">Coverage</button>
     <button class="tab" data-tab="students">Scholars</button>
     <button class="tab" data-tab="firstaid">First Aid</button>
+    <button class="tab" data-tab="alerts">Alerts</button>
     <button class="tab" data-tab="classes">Classes</button>
   </div>
   <div id="pull-indicator" style="display:none;text-align:center;padding:10px;font-size:11px;color:var(--slate);letter-spacing:.06em;transition:opacity 0.2s ease">
