@@ -141,7 +141,12 @@ function openStudent(name, prevScreen){
       '<div id="stu-inc-list"></div>'+
       '<div style="margin:14px 0;border-top:0.5px solid var(--border)"></div>'+
       '<div class="sec">First Aid / Injury Log</div>'+
-      '<div id="stu-first-aid"></div>';
+      '<div id="stu-first-aid"></div>'+
+      (SESSION.role==='admin' ?
+        '<div style="margin:14px 0;border-top:0.5px solid var(--border)"></div>'+
+        '<div class="sec">Accommodations <span style="font-size:9px;color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">Admin only</span></div>'+
+        '<div id="stu-accommodations"></div>'
+      : '');
 
     if(SESSION.role==='admin'){
       fetchStudentNote(name, function(_e, note){
@@ -214,6 +219,7 @@ function openStudent(name, prevScreen){
     });
     renderStudentList(rows);
     wireStudentLinks(body, 'S-student');
+
     fetch(SB_URL + '/rest/v1/first_aid_log?student=eq.' + encodeURIComponent(name) + '&select=*&order=incident_date.desc,created_at.desc&limit=100', {
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token}
     }).then(function(r){
@@ -238,6 +244,34 @@ function openStudent(name, prevScreen){
       var wrap=document.getElementById('stu-first-aid');
       if(wrap) wrap.innerHTML='<div class="card" style="font-size:11px;color:var(--text3)">Could not load first aid records.</div>';
     });
+    if(SESSION.role==='admin'){
+      fetch(SB_URL + '/rest/v1/student_accommodations?student_name=eq.' + encodeURIComponent(name) + '&select=plan_type,classroom_accommodations&limit=1', {
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token}
+      }).then(function(r){
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        return r.json();
+      }).then(function(rows){
+        var wrap=document.getElementById('stu-accommodations');
+        if(!wrap) return;
+        if(!rows || !rows.length || !rows[0].classroom_accommodations){
+          wrap.innerHTML='<div class="card" style="font-size:11px;color:var(--text3)">No accommodations on file.</div>';
+          return;
+        }
+        var r=rows[0];
+        wrap.innerHTML=
+          '<div class="card">'+
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+              '<span style="font-size:11px;font-weight:600;color:var(--text)">'+escHtml(r.plan_type)+' — Classroom Accommodations</span>'+
+              '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--indigo-lt);color:var(--indigo);font-weight:600">CONFIDENTIAL</span>'+
+            '</div>'+
+            '<div style="font-size:12px;color:var(--text2);line-height:1.7">'+escHtml(r.classroom_accommodations)+'</div>'+
+          '</div>';
+      }).catch(function(){
+        var wrap=document.getElementById('stu-accommodations');
+        if(wrap) wrap.innerHTML='<div class="card" style="font-size:11px;color:var(--text3)">Could not load accommodations.</div>';
+      });
+    }
+
   });
 }
 
