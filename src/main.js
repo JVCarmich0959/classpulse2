@@ -204,6 +204,19 @@ function getSubmitterDisplay(email, subject){
 }
 var SC={'PE':'#00e6c8','Technology':'#a78bfa','Art':'#f0c040','Music':'#ff4466','P.E.':'#00e6c8'};
 
+var SCHOLAR_ALIASES={
+  'ck':{student_name:'Chester King',homeroom:'3rd-Mello'},
+  'chester':{student_name:'Chester King',homeroom:'3rd-Mello'},
+  'kaiden h':{student_name:'Kaiden Horlback',homeroom:'2nd-Ham'},
+  'austin':{student_name:'Austin Majano-Crowder',homeroom:'2nd-Clark'},
+  'bryson':{student_name:'Bryson Oates',homeroom:'3rd-Danis/McClain'}
+};
+function resolveAlias(typed){
+  var key=(typed||'').trim().toLowerCase();
+  return SCHOLAR_ALIASES[key]||null;
+}
+var scholarAc={items:[],active:-1,req:0,timer:null,docBound:false};
+
 
 
 
@@ -488,7 +501,7 @@ function bS1(){
   var opts=HOMEROOMS.map(function(h){return '<option value="'+h+'"'+(STATE.entry.homeroom===h?' selected':'')+'>'+h+'</option>';}).join('');
   var chips=getSubjects().map(function(s){return '<button type="button" class="chip'+(STATE.entry.specials===s?' on':'')+'" data-sp="'+s+'">'+s+'</button>';}).join('');
   return '<div style="padding:2px 0 14px"><h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Who is this about?</h3>'+
-    '<div class="fg"><label class="fl">Scholar name <span class="req">*</span></label><input type="text" id="f-name" placeholder="First Last" value="'+STATE.entry.studentName+'" autocomplete="off"></div>'+
+    '<div class="fg scholar-ac-wrap"><label class="fl">Scholar name <span class="req">*</span></label><input type="text" id="f-name" placeholder="First Last" value="'+escAttr(STATE.entry.studentName)+'" autocomplete="off" aria-autocomplete="list" aria-expanded="false" aria-controls="f-name-suggestions"><div id="f-name-suggestions" class="scholar-ac" role="listbox"></div></div>'+
     '<div class="fg"><label class="fl">Homeroom class <span class="req">*</span></label><select id="f-hr"><option value="">Select homeroom...</option>'+opts+'</select></div>'+
     '<div class="fg"><label class="fl">'+(SESSION.role==="homeroom"||SESSION.role==="ia"?"Subject / context":"Your class")+' <span class="req">*</span></label><div class="chips" id="sp-chips">'+chips+'</div></div>'+
     '<button type="button" class="btn-p" id="s1-next">Next →</button></div>';
@@ -520,9 +533,119 @@ function bS4(){
     '<textarea id="f-notes" placeholder="A — Antecedent: what triggered the behavior?\nB — Behavior: what did the scholar do?\nC — Consequence: what was the immediate result?">'+STATE.entry.notes+'</textarea></div>'+
     '<div class="brow"><button type="button" class="btn-s" id="s4-back">← Back</button><button type="button" class="btn-ok" id="s4-sub">✓ Submit log</button></div></div>';
 }
+
+function fetchScholarSuggestions(query, homeroom, cb){
+  var q='select=student_name,homeroom,grade&active=eq.true&school_year=eq.2025-26&student_name=ilike.*'+encodeURIComponent(query)+'*&order=homeroom.asc,student_name.asc&limit=50';
+  authedFetch('/rest/v1/students?'+q).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(rows){
+    rows=Array.isArray(rows)?rows:[];
+    rows.sort(function(a,b){
+      var ah=homeroom&&a.homeroom===homeroom?0:1;
+      var bh=homeroom&&b.homeroom===homeroom?0:1;
+      if(ah!==bh) return ah-bh;
+      return String(a.student_name||'').localeCompare(String(b.student_name||''));
+    });
+    cb(rows.slice(0,6));
+  }).catch(function(err){
+    console.warn('Scholar autocomplete failed',err);
+    cb([]);
+  });
+}
+function renderScholarSuggestions(items, activeIdx){
+  var box=el('f-name-suggestions');
+  var input=el('f-name');
+  if(!box||!input) return;
+  scholarAc.items=items||[];
+  scholarAc.active=typeof activeIdx==='number'?activeIdx:-1;
+  if(!scholarAc.items.length){
+    box.innerHTML='';box.classList.remove('show');input.setAttribute('aria-expanded','false');return;
+  }
+  box.innerHTML=scholarAc.items.map(function(r,i){
+    return '<button type="button" class="scholar-ac-row'+(i===scholarAc.active?' active':'')+'" role="option" aria-selected="'+(i===scholarAc.active?'true':'false')+'" data-scholar-idx="'+i+'">'+
+      '<span class="scholar-ac-name">'+(r.alias?'<span class="scholar-ac-arrow">→</span>':'')+escHtml(r.student_name||'')+'</span>'+
+      '<span class="scholar-ac-room">'+escHtml(r.homeroom||'')+'</span>'+
+    '</button>';
+  }).join('');
+  box.classList.add('show');
+  input.setAttribute('aria-expanded','true');
+}
+function selectScholarSuggestion(row){
+  if(!row) return;
+  var name=el('f-name');
+  var hr=el('f-hr');
+  STATE.entry.studentName=row.student_name||'';
+  STATE.entry.homeroom=row.homeroom||'';
+  if(name) name.value=STATE.entry.studentName;
+  if(hr) hr.value=STATE.entry.homeroom;
+  renderScholarSuggestions([],-1);
+}
+function updateScholarAutocomplete(){
+  var input=el('f-name');
+  if(!input) return;
+  var typed=input.value||'';
+  STATE.entry.studentName=typed;
+  var alias=resolveAlias(typed);
+  if(alias){
+    selectScholarSuggestion(alias);
+    renderScholarSuggestions([Object.assign({alias:true},alias)],0);
+    return;
+  }
+  if(typed.trim().length<2){renderScholarSuggestions([],-1);return;}
+  var req=++scholarAc.req;
+  var homeroom=(el('f-hr')&&el('f-hr').value)||STATE.entry.homeroom||'';
+  fetchScholarSuggestions(typed.trim(), homeroom, function(items){
+    if(req!==scholarAc.req) return;
+    renderScholarSuggestions(items,-1);
+  });
+}
+function wireScholarAutocomplete(){
+  var input=el('f-name');
+  var box=el('f-name-suggestions');
+  var hr=el('f-hr');
+  if(!input||!box) return;
+  input.addEventListener('input',function(){
+    clearTimeout(scholarAc.timer);
+    scholarAc.timer=setTimeout(updateScholarAutocomplete,120);
+  });
+  input.addEventListener('keydown',function(e){
+    if(!scholarAc.items.length) return;
+    if(e.key==='ArrowDown'){
+      e.preventDefault();
+      renderScholarSuggestions(scholarAc.items, Math.min(scholarAc.active+1, scholarAc.items.length-1));
+    }else if(e.key==='ArrowUp'){
+      e.preventDefault();
+      renderScholarSuggestions(scholarAc.items, Math.max(scholarAc.active-1, 0));
+    }else if(e.key==='Enter'&&scholarAc.active>=0){
+      e.preventDefault();
+      selectScholarSuggestion(scholarAc.items[scholarAc.active]);
+    }else if(e.key==='Escape'){
+      e.preventDefault();
+      renderScholarSuggestions([],-1);
+    }
+  });
+  box.addEventListener('mousedown',function(e){e.preventDefault();});
+  box.addEventListener('click',function(e){
+    var row=e.target.closest('[data-scholar-idx]');
+    if(row) selectScholarSuggestion(scholarAc.items[parseInt(row.dataset.scholarIdx,10)]);
+  });
+  if(hr) hr.addEventListener('change',function(){
+    STATE.entry.homeroom=hr.value;
+    if(input.value.trim().length>=2) updateScholarAutocomplete();
+  });
+  if(!scholarAc.docBound){
+    document.addEventListener('click',function(e){
+      var wrap=e.target.closest('.scholar-ac-wrap');
+      if(!wrap) renderScholarSuggestions([],-1);
+    });
+    scholarAc.docBound=true;
+  }
+}
 function attachSL(){
   var fn=el('f-name');if(fn)fn.addEventListener('input',function(){STATE.entry.studentName=fn.value;});
   var fhr=el('f-hr');if(fhr)fhr.addEventListener('change',function(){STATE.entry.homeroom=fhr.value;});
+  wireScholarAutocomplete();
   document.querySelectorAll('[data-sp]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.specials=btn.dataset.sp;document.querySelectorAll('[data-sp]').forEach(function(b){b.classList.toggle('on',b.dataset.sp===STATE.entry.specials);});});});
   var s1n=el('s1-next');
   if(s1n)s1n.addEventListener('click',function(){if(!STATE.entry.studentName.trim()||!STATE.entry.homeroom||!STATE.entry.specials){alert('Please fill in scholar name, homeroom, and subject.');return;}STATE.step=1;renderStep();});
@@ -783,6 +906,9 @@ function renderHistory(){
 function escHtml(s){
   if(!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s){
+  return escHtml(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ── FIND LOG BY UID ──
