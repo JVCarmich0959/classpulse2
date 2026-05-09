@@ -419,6 +419,158 @@ function initFreshness(){
 }
 
 
+function skeletonRows(count, widths) {
+  var out = '';
+  for (var i = 0; i < count; i++) {
+    var w = widths ? widths[i % widths.length] : Math.max(30, 90 - i * 5) + '%';
+    out += '<div style="padding:10px 8px;border-bottom:1px solid var(--border)">' +
+      '<div class="skeleton skeleton-text" style="width:38%;margin-bottom:8px"></div>' +
+      '<div class="skeleton skeleton-bar" style="width:' + w + '"></div>' +
+    '</div>';
+  }
+  return out;
+}
+
+function skeletonKpis(count) {
+  var cards = '';
+  for (var i = 0; i < count; i++) cards += '<div class="skeleton skeleton-kpi" style="margin:4px"></div>';
+  return '<div class="kpi-grid" style="margin-bottom:12px">' + cards + '</div>';
+}
+
+function animateListIn(container) {
+  if(!container) return;
+  var items = container.querySelectorAll('.li');
+  items.forEach(function(item, i) {
+    item.classList.add('anim-in');
+    item.style.animationDelay = (i * 0.025) + 's';
+  });
+}
+
+function showToast(message, type, duration) {
+  var t = document.getElementById('cp-toast');
+  if (t) t.remove();
+  t = document.createElement('div');
+  t.id = 'cp-toast';
+  t.className = 'toast' + (type ? ' toast-' + type : '');
+  t.textContent = message;
+  document.body.appendChild(t);
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() { t.classList.add('toast-visible'); });
+  });
+  setTimeout(function() {
+    t.classList.remove('toast-visible');
+    setTimeout(function() { if (t.parentNode) t.remove(); }, 300);
+  }, duration || 3000);
+}
+
+function initPullToRefresh(scrollEl, onRefresh) {
+  if (!scrollEl || scrollEl._pullRefreshInited) return;
+  scrollEl._pullRefreshInited = true;
+  var startY = 0, pulling = false, threshold = 80;
+  var ind = document.getElementById('pull-indicator');
+  scrollEl.addEventListener('touchstart', function(e) {
+    if (scrollEl.scrollTop === 0) { startY = e.touches[0].clientY; pulling = true; }
+  }, { passive: true });
+  scrollEl.addEventListener('touchmove', function(e) {
+    if (!pulling) return;
+    var d = e.touches[0].clientY - startY;
+    if (d > 30 && ind) { ind.style.display = 'block'; ind.style.opacity = Math.min(d / threshold, 1); }
+  }, { passive: true });
+  scrollEl.addEventListener('touchend', function(e) {
+    if (!pulling) return;
+    pulling = false;
+    if (ind) { ind.style.display = 'none'; ind.style.opacity = 0; }
+    var d = e.changedTouches[0].clientY - startY;
+    if (d > threshold) { showToast('Refreshing...', 'info', 1500); onRefresh(); }
+    startY = 0;
+  });
+}
+
+function initSwipeToDismiss(sheetEl, onDismiss) {
+  if (!sheetEl || sheetEl._swipeDismissInited) return;
+  sheetEl._swipeDismissInited = true;
+  var startY = 0, dragging = false;
+  sheetEl.addEventListener('touchstart', function(e) {
+    startY = e.touches[0].clientY; dragging = true;
+    sheetEl.style.transition = 'none';
+  }, { passive: true });
+  sheetEl.addEventListener('touchmove', function(e) {
+    if (!dragging) return;
+    var d = e.touches[0].clientY - startY;
+    if (d > 0) sheetEl.style.transform = 'translateY(' + d + 'px)';
+  }, { passive: true });
+  sheetEl.addEventListener('touchend', function(e) {
+    if (!dragging) return;
+    dragging = false;
+    sheetEl.style.transition = 'transform 0.3s ease';
+    var d = e.changedTouches[0].clientY - startY;
+    if (d > 100) { onDismiss(); setTimeout(function() { sheetEl.style.transform = ''; }, 300); }
+    else sheetEl.style.transform = '';
+    startY = 0;
+  });
+}
+
+function updateLogBadge() {
+  var count = STATE.logs ? STATE.logs.length : 0;
+  var badge = document.getElementById('log-nav-badge');
+  if (!badge) {
+    var logBtn = document.getElementById('TN-log') || document.getElementById('AN-log');
+    if (!logBtn) return;
+    logBtn.style.position = 'relative';
+    badge = document.createElement('span');
+    badge.id = 'log-nav-badge';
+    badge.style.cssText = 'position:absolute;top:0;right:6px;background:#BFA95F;color:#271A70;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:14px;text-align:center;line-height:14px;pointer-events:none';
+    logBtn.appendChild(badge);
+  }
+  badge.style.display = count > 0 ? 'block' : 'none';
+  badge.textContent = String(count);
+}
+
+function filterScholars(query) {
+  var q = (query || '').toLowerCase().trim();
+  document.querySelectorAll('#admin-body .li[data-stu]').forEach(function(row) {
+    row.style.display = (!q || (row.dataset.stu || '').toLowerCase().indexOf(q) !== -1) ? '' : 'none';
+  });
+}
+
+var _shortcutsInited = false;
+function initKeyboardShortcuts() {
+  if (_shortcutsInited) return;
+  _shortcutsInited = true;
+  document.addEventListener('keydown', function(e) {
+    if (!SESSION || SESSION.role !== 'admin') return;
+    var typing = document.activeElement && ['INPUT','TEXTAREA','SELECT'].indexOf(document.activeElement.tagName) !== -1;
+    if (e.key === 'Escape') {
+      var eo = document.getElementById('edit-overlay');
+      if (eo && eo.classList.contains('show')) { closeEditSheet(); return; }
+      var dc = document.getElementById('del-confirm');
+      if (dc && dc.classList.contains('show')) { closeDelConfirm(); return; }
+    }
+    if (typing) return;
+    var tabMap = {'1':'overview','2':'timing','3':'coverage','4':'students','5':'firstaid'};
+    if (tabMap[e.key] && !e.metaKey && !e.ctrlKey) { setTab(tabMap[e.key]); return; }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      var si = document.getElementById('scholar-search');
+      if (si) { si.focus(); si.select(); }
+    }
+  });
+}
+
+function maybeInitShortcuts() {
+  initKeyboardShortcuts();
+}
+
+function emptyState(message, sub) {
+  return '<div style="text-align:center;padding:40px 20px">' +
+    '<div style="width:32px;height:32px;border-radius:50%;border:2px solid var(--border);margin:0 auto 14px;opacity:0.4"></div>' +
+    '<div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:6px">' + escHtml(message) + '</div>' +
+    (sub ? '<div style="font-size:12px;color:var(--text3);line-height:1.6">' + escHtml(sub) + '</div>' : '') +
+  '</div>';
+}
+
+
+
 // ── LOGIN ──
 function initLogin(){
   var btnLogin = el('btn-login');
@@ -436,6 +588,7 @@ function initLogin(){
         if(stopEeg) stopEeg();
         if(err || !role){ showScreen('S-login'); return; }
         SESSION.role = role;
+        maybeInitShortcuts();
         if(role === 'admin'){ goAdmin(); } else { goTeacher(); }
       });
     });
@@ -458,6 +611,7 @@ function initLogin(){
         updateUserDisplay();
         fetchRole(SESSION.userId, function(err, role){
           SESSION.role = role;
+          maybeInitShortcuts();
           if(role === 'admin'){ goAdmin(); } else { goTeacher(); }
         });
       } else {
@@ -554,14 +708,14 @@ function showScreen(id,back){
   });
   updateNavActive(id);
 }
-function goTeacher(){STATE.entry=freshEntry();STATE.step=0;STATE.myDbLoaded=false;STATE.myDbLogs=[];updateUserDisplay();showScreen('S-teacher');showPane('log');renderStep();updateTeacherNav();}
+function goTeacher(){STATE.entry=freshEntry();STATE.step=0;STATE.myDbLoaded=false;STATE.myDbLogs=[];updateUserDisplay();showScreen('S-teacher');showPane('log');renderStep();updateTeacherNav();updateLogBadge();}
 
 function updateTeacherNav(){
   var sw = el('btn-t-switch');
   if(sw) sw.style.display = SESSION.role === 'admin' ? '' : 'none';
 }
 
-function goAdmin(){updateUserDisplay();showScreen('S-admin');STATE.adminTab='overview';document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='overview');});renderAdmin();}
+function goAdmin(){updateUserDisplay();showScreen('S-admin');STATE.adminTab='overview';document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='overview');});renderAdmin();updateLogBadge();}
 function showPane(pane){
   el('T-log').style.display=pane==='log'?'flex':'none';
   el('T-hist').style.display=pane==='hist'?'flex':'none';
@@ -757,9 +911,11 @@ function attachSL(){
     var row={student:e.studentName,homeroom:e.homeroom,specials:e.specials,subject:e.specials,teacher_role:SESSION.role||'specials',behaviors:e.behaviors.slice(),incident_date:e.date||null,incident_time:e.time||null,color_chart:e.colorChart,home_contact:e.homeContact,notes:fullNotes||null,submitted_by:SESSION.email||'specials-team'};
     var log=Object.assign({},row,{studentName:e.studentName,colorChart:e.colorChart,homeContact:e.homeContact,date:e.date,time:e.time,id:Date.now()});
     STATE.logs.unshift(log);
+    updateLogBadge();
+    showToast('Incident logged');
     el('sheet-detail').textContent=e.studentName+' · '+e.specials+' · '+(e.behaviors.length?e.behaviors.map(displayBehavior).join(', '):'—');
     el('T-sheet').classList.add('show');el('T-overlay').classList.add('show');
-    authedInsert(row).catch(function(err){console.warn('Supabase insert failed',err);});
+    authedInsert(row).catch(function(err){console.warn('Supabase insert failed',err);showToast('Could not connect', 'error');});
   });
 }
 function closeSheet(){el('T-sheet').classList.remove('show');el('T-overlay').classList.remove('show');STATE.entry=freshEntry();STATE.step=0;renderStep();}
@@ -791,6 +947,7 @@ function fetchMyLogs(cb){
   }).catch(function(err){
     STATE.myDbLoaded = true;
     console.warn('fetchMyLogs error', err);
+    showToast('Could not connect', 'error');
     if(cb) cb(err, []);
   });
 }
@@ -1106,6 +1263,7 @@ function fetchLiveData(cb){
     .catch(function(err){
       STATE.liveError = true;
       STATE.liveLoaded = true;
+      showToast('Could not connect', 'error');
       if(err && err.message && err.message.indexOf('401')>=0) return; // already signed out
       if(cb) cb(err, null);
     });
@@ -1228,7 +1386,7 @@ function setTab(t){STATE.adminTab=t;document.querySelectorAll('#admin-tabs .tab'
 function renderAdmin(){
   var body=el('admin-body'),t=STATE.adminTab;
   if(!STATE.liveLoaded){
-    body.innerHTML='<div style="text-align:center;padding:40px 0;color:var(--text3);font-size:12px;letter-spacing:.06em">LOADING LIVE DATA…</div>';
+    body.innerHTML=skeletonKpis(4)+skeletonRows(8);
     fetchLiveData(function(){renderAdmin();});
     return;
   }
@@ -1242,7 +1400,15 @@ function renderAdmin(){
   else content=bCL(live);
   body.innerHTML=content;
   if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">Error: Could not reach Supabase — showing cached data</div>'+body.innerHTML;
-  if(t==='students') wireStudentLinks(body,'S-admin');
+  if(t==='students') {
+    wireStudentLinks(body,'S-admin');
+    if(STATE.liveLoaded) animateListIn(body);
+    var si = document.getElementById('scholar-search');
+    if (si) {
+      si.addEventListener('input', function() { filterScholars(this.value); });
+      if (window.innerWidth > 768) si.focus();
+    }
+  }
   if(t==='firstaid') {
     body.querySelectorAll('[data-fa-spec]').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
@@ -1261,7 +1427,14 @@ function renderAdmin(){
   }
   setTimeout(drawCharts,60);
   body.querySelectorAll('[data-cls]').forEach(function(r){r.addEventListener('click',function(){openDet(r.dataset.cls,live);});});
+  if(t==='classes') animateListIn(body);
+  initPullToRefresh(body, function() {
+    STATE.liveLoaded = false;
+    STATE.liveError = false;
+    renderAdmin();
+  });
 }
+
 
 function fetchFirstAid(cb){
   if(!SESSION.token){ STATE.firstAidLoaded=true; if(cb) cb(new Error('not authenticated'),[]); return; }
@@ -1280,20 +1453,21 @@ function fetchFirstAid(cb){
     STATE.firstAidRows=[];
     STATE.firstAidLoaded=true;
     STATE.firstAidError=true;
+    showToast('Could not load first aid records', 'error');
     if(cb) cb(err, []);
   });
 }
 function bFA() {
   if (!STATE.firstAidLoaded) {
     fetchFirstAid(function () { renderAdmin(); });
-    return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">Loading first aid log…</div>';
+    return skeletonRows(4);
   }
   if (STATE.firstAidError) {
-    return '<div class="card" style="text-align:center;padding:32px 0;color:var(--red);font-size:12px">Could not load first aid records. Check connection and try again.<br><br><button class="pill" onclick="STATE.firstAidLoaded=false;STATE.firstAidError=false;renderAdmin()">Retry</button></div>';
+    return '<div class="card">' + emptyState('Could not load records', 'Check your connection and try again.') + '<div style="text-align:center;padding-bottom:20px"><button class="pill" onclick="STATE.firstAidLoaded=false;STATE.firstAidError=false;renderAdmin()">Retry</button></div></div>';
   }
 
   var all = STATE.firstAidRows || [];
-  if (!all.length) return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No first aid records found.</div>';
+  if (!all.length) return '<div class="card">' + emptyState('No first aid records', 'First aid events will appear here when logged.') + '</div>';
 
   // Read active filters from DOM (default: all)
   var activeSpecials = STATE.faFilterSpecials || 'all';
@@ -1761,12 +1935,19 @@ function bCV(){
     tableHtml+completenessHtml;
 }
 function bST(live){
+  if(!STATE.liveLoaded) return skeletonRows(10, ['95%','87%','80%','73%','65%','57%','50%','43%','36%','28%']);
   var LD=live||{};
-  var stuList=LD.top_students&&LD.top_students.length?LD.top_students:[];
-  if(!stuList.length) return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
+  var stuList=LD.top_students&&LD.top_students.length?LD.top_students.filter(function(s){return s.n>=4;}):[];
+  var searchHtml='<div style="padding:0 0 14px">' +
+    '<input id="scholar-search" type="text" placeholder="Search scholars..." ' +
+      'autocomplete="off" autocorrect="off" spellcheck="false" ' +
+      'style="width:100%;padding:11px 14px;border-radius:8px;border:1.5px solid var(--border);' +
+             'font-size:14px;background:var(--panel);color:var(--text);box-sizing:border-box">' +
+  '</div>';
+  if(!stuList.length) return searchHtml + '<div class="card">' + emptyState('No scholars meet this threshold', 'Incidents will appear here as data accumulates.') + '</div>';
   var mx=stuList[0].n||1;
-  return '<div class="sec">Scholars with 4+ logged incidents</div><div class="card">'+
-    stuList.map(function(s){return '<div class="li" data-scholar-row="1"><div class="li-c"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span class="scholar-name">'+stuNameLink(s.name)+'</span><span class="inc-count" style="color:'+scholarBarColor(s.n)+'">'+s.n+'</span></div>'+pb((s.n/mx)*100,scholarBarColor(s.n))+'</div></div>';}).join('')+'</div>';
+  return searchHtml + '<div class="sec">Scholars with 4+ logged incidents</div><div class="card">'+
+    stuList.map(function(s){return '<div class="li" data-scholar-row="1" data-stu="'+escAttr(s.name)+'"><div class="li-c"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span class="scholar-name">'+stuNameLink(s.name)+'</span><span class="inc-count" style="color:'+scholarBarColor(s.n)+'">'+s.n+'</span></div>'+pb((s.n/mx)*100,scholarBarColor(s.n))+'</div></div>';}).join('')+'</div>';
 }
 function bCL(live){
   var LD=live||{};
@@ -1914,7 +2095,7 @@ function fetchStudentIncidents(name, cb){
 // ── RENDER INCIDENT LOG LIST (reusable) ──
 function renderIncidentList(rows, container, onAfterEdit){
   if(!rows||!rows.length){
-    container.innerHTML='<div style="text-align:center;padding:24px 0;font-size:11px;color:var(--text3);letter-spacing:.06em">No incidents found</div>';
+    container.innerHTML=emptyState('No incidents on record', 'This scholar has no logged specials incidents.');
     return;
   }
   // group by date
@@ -1962,6 +2143,7 @@ function renderIncidentList(rows, container, onAfterEdit){
   }).join('');
   container.innerHTML=html;
   wireStudentLinks(container, getStuPrevScreen());
+  animateListIn(container);
   // bind toggles
   container.querySelectorAll('[data-toggle]').forEach(function(hdr){
     hdr.addEventListener('click',function(){
@@ -2017,11 +2199,10 @@ function openDet(id,live){
 
   if(isZero){
     el('det-body').innerHTML=
-      '<div class="empty" style="padding-top:36px">'+
-      '<div class="empty-t">No incidents logged</div>'+
-      '<div class="empty-s">No specials incidents were recorded for this classroom in the current live data.</div></div>'+
+      '<div class="card">' + emptyState('No incidents for this class', 'Incidents will appear as teachers log them.') + '</div>'+
       '<div style="height:16px"></div>';
     wireStudentLinks(el('det-body'),'S-detail');
+  animateListIn(el('det-body'));
   showScreen('S-detail');
     return;
   }
@@ -2061,7 +2242,7 @@ function openDet(id,live){
     'All incidents'+
     '<span style="font-size:10px;color:var(--text3);font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;letter-spacing:.04em" id="det-inc-count">loading…</span>'+
     '</div>'+
-  '<div id="det-inc-list" style="margin-bottom:16px"><div style="text-align:center;padding:20px 0;font-size:11px;color:var(--text3);letter-spacing:.06em">Fetching records…</div></div>'+
+  '<div id="det-inc-list" style="margin-bottom:16px">' + skeletonRows(6) + '</div>'+
   '<div style="height:16px"></div>';
 
   wireStudentLinks(el('det-body'),'S-detail');
@@ -2074,10 +2255,15 @@ function openDet(id,live){
       var listEl=el('det-inc-list');
       if(!listEl)return;
       if(err||!rows){
-        if(listEl) listEl.innerHTML='<div style="font-size:11px;color:var(--text3);text-align:center;padding:16px 0">Could not load incidents</div>';
+        if(listEl) listEl.innerHTML=emptyState('Could not load records', 'Check your connection and try again.');
+        showToast('Could not connect', 'error');
         return;
       }
       if(countEl) countEl.textContent=rows.length+' records';
+      if(!rows.length){
+        listEl.innerHTML=emptyState('No incidents for this class', 'Incidents will appear as teachers log them.');
+        return;
+      }
       var onRefresh=function(){
         // re-fetch after edit/delete
         fetchClassIncidents(id,function(e2,r2){
@@ -2285,6 +2471,8 @@ el('admin-tabs').addEventListener('click',function(e){var t=e.target.dataset.tab
 // ── EDIT SHEET EVENTS ──
 el('edit-close-btn').addEventListener('click',closeEditSheet);
 el('edit-overlay').addEventListener('click',function(){closeEditSheet();closeDelConfirm();});
+initSwipeToDismiss(document.getElementById('edit-sheet'), closeEditSheet);
+initSwipeToDismiss(document.getElementById('del-confirm'), closeDelConfirm);
 
 el('es-save').addEventListener('click',function(){
   var saveBtn=el('es-save'),status=el('es-status');
@@ -2308,6 +2496,7 @@ el('es-save').addEventListener('click',function(){
     var cb=EDIT_STATE.onAfterEdit;
     resetSaveBtn();
     closeEditSheet();
+    showToast('Changes saved');
     STATE.myDbLogs=STATE.myDbLogs.map(function(row){
       if(String(row.id)===String(EDIT_STATE.dbId)){
         return Object.assign({},row,{student:updates.student,homeroom:updates.homeroom,specials:updates.specials,subject:updates.specials,behaviors:updates.behaviors,incident_date:updates.incident_date,incident_time:updates.incident_time,color_chart:updates.color_chart,home_contact:updates.home_contact,notes:updates.notes});
@@ -2348,6 +2537,7 @@ el('es-save').addEventListener('click',function(){
       status.textContent=err.message||'Save failed';
       status.style.color='var(--red)';
       resetSaveBtn();
+      showToast('Could not connect', 'error');
     });
   } else {
     // session-only log
@@ -2379,11 +2569,13 @@ el('del-go-btn').addEventListener('click',function(){
     var cb=DEL_STATE.onAfterDelete;
     resetDeleteBtn();
     closeDelConfirm();
+    showToast('Incident deleted', 'info');
     if(cb){ try{cb();}catch(e){console.error(e);} }
     else renderHistory();
   }).catch(function(){
     resetDeleteBtn();
     closeDelConfirm();
+    showToast('Could not connect', 'error');
   });
 });
 
@@ -2444,6 +2636,8 @@ el('setup-submit').addEventListener('click', function(){
     SESSION.token = data.access_token;
     SESSION.email = data.user.email;
     fetchRole(data.user.id, function(err, role){
+      SESSION.role = role;
+      maybeInitShortcuts();
       if(role==='admin') goAdmin(); else goTeacher();
     });
   }).catch(function(err){
@@ -2469,5 +2663,6 @@ export {
   renderStep, goTeacher, showPane, closeSheet, renderHistory, fetchMyLogs,
   goAdmin, renderAdmin, setTab, bOV, bTM, bCV, bST, bCL,
   renderClsExplorer, filterClasses, openDet, showScreen, escHtml,
-  openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen, displayBehavior
+  openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen, displayBehavior,
+  skeletonRows, skeletonKpis, animateListIn, showToast, emptyState
 };

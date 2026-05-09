@@ -1,5 +1,5 @@
 import { SB_URL, SB_KEY } from '../../config.js';
-import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard, displayBehavior } from '../../main.js';
+import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard, displayBehavior, skeletonKpis, skeletonRows, animateListIn, showToast, emptyState } from '../../main.js';
 
 function fetchStudentNote(name, cb){
   if(!SESSION.token){ if(cb) cb(new Error('not authenticated'), ''); return; }
@@ -95,13 +95,14 @@ function openStudent(name, prevScreen){
   var body = document.getElementById('stu-body');
   if(title) title.textContent = 'Loading…';
   if(sub) sub.textContent = 'Loading…';
-  if(body) body.innerHTML = '<div style="text-align:center;padding:24px 0;font-size:11px;color:var(--text3);letter-spacing:.06em">Loading scholar profile…</div>';
+  if(body) body.innerHTML = skeletonKpis(4) + skeletonRows(6);
   showScreen('S-student');
 
   fetchStudentIncidents(name, function(err, rows){
     rows = rows || [];
     if(err){
-      if(body) body.innerHTML = '<div style="text-align:center;padding:24px 0;font-size:11px;color:var(--text3);letter-spacing:.06em">Could not load student incidents</div>';
+      if(body) body.innerHTML = emptyState('Could not load records', 'Check your connection and try again.');
+      showToast('Could not connect', 'error');
       return;
     }
     var total = rows.length;
@@ -163,7 +164,9 @@ function openStudent(name, prevScreen){
           saveStudentNote(name, ta ? ta.value : '', function(e2){
             saveBtn.disabled = false;
             saveBtn.textContent = 'Save note';
-            if(st) st.textContent = e2 ? 'Save failed' : 'Saved';
+            if(st) st.textContent = e2 ? 'Save failed' : '';
+            if(e2) showToast('Could not connect', 'error');
+            else showToast('Note saved');
           });
         });
       }
@@ -180,6 +183,7 @@ function openStudent(name, prevScreen){
       activeRows=nextRows||[];
       if(metaEl) metaEl.textContent=activeRows.length+' records';
       renderIncidentList(activeRows, listEl, onRefresh);
+      animateListIn(listEl);
     }
     var onRefresh = function(){
       fetchStudentIncidents(name, function(_e2, rows2){
@@ -229,7 +233,7 @@ function openStudent(name, prevScreen){
       var wrap=document.getElementById('stu-first-aid');
       if(!wrap) return;
       if(!faRows || !faRows.length){
-        wrap.innerHTML='<div class="card" style="font-size:11px;color:var(--text3)">No first aid records for this scholar.</div>';
+        wrap.innerHTML='<div class="card">' + emptyState('No first aid records', 'First aid events will appear here when logged.') + '</div>';
         return;
       }
       wrap.innerHTML='<div class="card">'+faRows.map(function(r){
@@ -242,34 +246,36 @@ function openStudent(name, prevScreen){
       }).join('')+'</div>';
     }).catch(function(){
       var wrap=document.getElementById('stu-first-aid');
-      if(wrap) wrap.innerHTML='<div class="card" style="font-size:11px;color:var(--text3)">Could not load first aid records.</div>';
+      if(wrap) wrap.innerHTML='<div class="card">' + emptyState('Could not load records', 'Check your connection and try again.') + '</div>';
+      showToast('Could not load first aid records', 'error');
     });
     if(SESSION.role==='admin'){
-      fetch(SB_URL + '/rest/v1/student_accommodations?student_name=eq.' + encodeURIComponent(name) + '&select=plan_type,classroom_accommodations&limit=1', {
-        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token}
-      }).then(function(r){
-        if(!r.ok) throw new Error('HTTP '+r.status);
-        return r.json();
-      }).then(function(rows){
-        var wrap=document.getElementById('stu-accommodations');
-        if(!wrap) return;
-        if(!rows || !rows.length || !rows[0].classroom_accommodations){
-          wrap.innerHTML='<div class="card" style="font-size:11px;color:var(--text3)">No accommodations on file.</div>';
-          return;
-        }
-        var r=rows[0];
-        wrap.innerHTML=
-          '<div class="card">'+
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
-              '<span style="font-size:11px;font-weight:600;color:var(--text)">'+escHtml(r.plan_type)+' — Classroom Accommodations</span>'+
-              '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--indigo-lt);color:var(--indigo);font-weight:600">CONFIDENTIAL</span>'+
-            '</div>'+
-            '<div style="font-size:12px;color:var(--text2);line-height:1.7">'+escHtml(r.classroom_accommodations)+'</div>'+
-          '</div>';
-      }).catch(function(){
-        var wrap=document.getElementById('stu-accommodations');
-        if(wrap) wrap.innerHTML='<div class="card" style="font-size:11px;color:var(--text3)">Could not load accommodations.</div>';
-      });
+      var accWrap = document.getElementById('stu-accommodations');
+      if(accWrap){
+        fetch(SB_URL + '/rest/v1/student_accommodations?student_name=eq.' + encodeURIComponent(name) + '&select=plan_type,classroom_accommodations&limit=1', {
+          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token}
+        }).then(function(r){
+          if(!r.ok) throw new Error('HTTP '+r.status);
+          return r.json();
+        }).then(function(rows){
+          if(!rows || !rows.length || !rows[0].classroom_accommodations){
+            accWrap.innerHTML=emptyState('No accommodations on file', '');
+            return;
+          }
+          var rec=rows[0];
+          accWrap.innerHTML=
+            '<div class="card">'+
+              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+                '<span style="font-size:12px;font-weight:700;color:var(--indigo)">'+escHtml(rec.plan_type)+' — Classroom Accommodations</span>'+
+                '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--indigo-lt);color:var(--indigo);font-weight:600;letter-spacing:.04em">CONFIDENTIAL</span>'+
+              '</div>'+
+              '<div style="font-size:13px;color:var(--text2);line-height:1.75">'+escHtml(rec.classroom_accommodations)+'</div>'+
+            '</div>';
+        }).catch(function(){
+          if(accWrap) accWrap.innerHTML=emptyState('Could not load accommodations', '');
+          showToast('Could not connect', 'error');
+        });
+      }
     }
 
   });
