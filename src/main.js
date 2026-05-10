@@ -1488,6 +1488,83 @@ function populateEditSheet(l){
   }).join('');
   behDiv.querySelectorAll('[data-eb]').forEach(function(c){c.addEventListener('click',function(){c.classList.toggle('on');});});
   el('es-status').textContent='';
+
+  function syncColorWrap(){
+    var wrap=el('es-color-wrap');
+    var chart=el('es-chart');
+    if(wrap&&chart) wrap.style.display=chart.checked?'block':'none';
+  }
+
+  var existingTransition=l.colorTransition||'';
+  if(!existingTransition&&l.notes){
+    var tm=(l.notes||'').match(/Color transition:\s*(Yellow|Orange|Red)/i);
+    if(tm) existingTransition=tm[1];
+  }
+  if(existingTransition) el('es-chart').checked=true;
+
+  var existingResolved=!!(l.colorResolved);
+  if(!existingResolved&&l.notes){
+    existingResolved=/Returned to Green/i.test(l.notes);
+  }
+
+  var colorMap={Yellow:'#BFA95F',Orange:'#d4622a',Red:'#c0392b'};
+  ['Yellow','Orange','Red'].forEach(function(color){
+    var chip=el('es-color-'+color.toLowerCase());
+    if(!chip) return;
+    chip.classList.toggle('on',existingTransition===color);
+    chip.style.background=existingTransition===color?colorMap[color]:'';
+    chip.style.color=existingTransition===color?'#ffffff':colorMap[color];
+  });
+
+  var resolvedRow=el('es-resolved-row');
+  if(resolvedRow) resolvedRow.style.display=existingTransition?'flex':'none';
+  var esResolved=el('es-resolved');
+  if(esResolved) esResolved.checked=existingResolved;
+
+  var esChart=el('es-chart');
+  if(esChart){
+    var newChart=esChart.cloneNode(true);
+    newChart.checked=esChart.checked;
+    esChart.parentNode.replaceChild(newChart,esChart);
+    newChart.addEventListener('change',function(){
+      syncColorWrap();
+      if(!newChart.checked){
+        ['Yellow','Orange','Red'].forEach(function(c){
+          var chip=el('es-color-'+c.toLowerCase());
+          if(chip){chip.classList.remove('on');chip.style.background='';chip.style.color=colorMap[c];}
+        });
+        if(resolvedRow) resolvedRow.style.display='none';
+        if(esResolved) esResolved.checked=false;
+      }
+    });
+  }
+
+  ['Yellow','Orange','Red'].forEach(function(color){
+    var oldChip=el('es-color-'+color.toLowerCase());
+    if(!oldChip) return;
+    var chip=oldChip.cloneNode(true);
+    chip.classList.toggle('on',oldChip.classList.contains('on'));
+    chip.style.background=oldChip.style.background;
+    chip.style.color=oldChip.style.color;
+    oldChip.parentNode.replaceChild(chip,oldChip);
+    chip.addEventListener('click',function(){
+      var wasOn=chip.classList.contains('on');
+      ['Yellow','Orange','Red'].forEach(function(c){
+        var ch=el('es-color-'+c.toLowerCase());
+        if(ch){ch.classList.remove('on');ch.style.background='';ch.style.color=colorMap[c];}
+      });
+      if(!wasOn){
+        chip.classList.add('on');
+        chip.style.background=colorMap[color];
+        chip.style.color='#ffffff';
+      }
+      var anySelected=!!document.querySelector('#es-color-wrap .edit-chip.on');
+      if(resolvedRow) resolvedRow.style.display=anySelected?'flex':'none';
+      if(!anySelected&&esResolved) esResolved.checked=false;
+    });
+  });
+
+  syncColorWrap();
   el('es-save').disabled=false;
   el('es-save').textContent='Save changes';
 }
@@ -1645,7 +1722,7 @@ function buildLiveStats(rows){
       home:Math.round(c.homeY/c.total*100),
       behaviors:Object.keys(c.behCounts).sort(function(a,b){return c.behCounts[b]-c.behCounts[a];}).map(function(b){return{t:b,n:c.behCounts[b]};}),
       specials:c.spCounts,
-      students:Object.keys(c.stuCounts).sort(function(a,b){return c.stuCounts[b]-c.stuCounts[a];}).slice(0,5).map(function(s){return{name:s,n:c.stuCounts[s]};}),
+      students:Object.keys(c.stuCounts).sort(function(a,b){return c.stuCounts[b]-c.stuCounts[a];}).map(function(s){return{name:s,n:c.stuCounts[s]};}),
       weekly:Object.keys(c.wkCounts).sort().map(function(w){var d=new Date(w+'T12:00:00');var label=isNaN(d)?w:(d.toLocaleString('en-US',{month:'short'})+' '+d.getDate());return{w:label,n:c.wkCounts[w]};})
     };
   });
@@ -2327,6 +2404,41 @@ function exportCSV(){
 
 
 // ── FETCH INCIDENTS FOR A CLASSROOM ──
+function fetchClassRoster(homeroom, cb){
+  var q='select=student_name,first_name,last_name&homeroom=eq.'+
+    encodeURIComponent(homeroom)+
+    '&active=eq.true&school_year=eq.2025-26&order=last_name.asc,first_name.asc';
+  authedFetch('/rest/v1/students?'+q)
+    .then(function(r){return r.json();})
+    .then(function(rows){cb(null,Array.isArray(rows)?rows:[]);})
+    .catch(function(err){cb(err,[]);});
+}
+
+function rosterRow(name, incCount, maxCount, hasInc){
+  var barWidth=maxCount>0?Math.round((incCount/maxCount)*100):0;
+  var barColor=scholarBarColor(incCount);
+  return '<div class="li" style="padding:10px 8px">'+
+    '<div class="li-c">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
+        '<span class="stu-name-link" data-stu="'+escAttr(name)+'" '+
+          'style="font-size:14px;font-weight:'+(hasInc?'700':'500')+';'+
+          'color:'+(hasInc?'var(--indigo)':'var(--text3)')+'">'+
+          escHtml(name)+
+        '</span>'+
+        '<span style="font-size:13px;font-weight:800;font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;'+
+          'color:'+(hasInc?barColor:'var(--text3)')+';flex-shrink:0;margin-left:8px">'+
+          (hasInc?incCount+(incCount===1?' incident':' incidents'):'No incidents')+
+        '</span>'+
+      '</div>'+
+      (hasInc?
+        '<div class="pbar" style="height:3px">'+
+          '<div class="pfill" style="--pw:'+barWidth+'%;width:var(--pw);background:'+barColor+'"></div>'+
+        '</div>':
+        '<div style="height:3px;background:var(--border);border-radius:3px;opacity:0.3"></div>')+
+    '</div>'+
+  '</div>';
+}
+
 function fetchClassIncidents(homeroom, cb){
   if(!SESSION.token){ if(cb) cb(new Error('not authenticated'),[]); return; }
   var tok=SESSION.token;
@@ -2490,8 +2602,7 @@ function openDet(id,live){
     '<div class="kpi"><div class="lbl">Subjects logged</div><div class="val">'+Object.keys(c.specials).filter(function(k){return c.specials[k]>0;}).length+'</div></div></div>'+
     '<div class="sec">Behavior types</div><div class="card">'+
     c.behaviors.map(function(b,i){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+displayBehavior(b.t)+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">'+b.n+'</span></div>'+pb((b.n/mxB)*100,BEHAVIOR_COLORS[i%BEHAVIOR_COLORS.length])+'</div>';}).join('')+'</div>'+
-    '<div class="sec">Scholars</div><div class="card">'+
-    c.students.map(function(s){return '<div class="li" data-scholar-row="1"><div class="li-c"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span class="scholar-name" style="color:'+(s.name==='Other'?'var(--text2)':'var(--text)')+'">'+stuNameLink(s.name)+'</span><span class="inc-count" style="color:'+scholarBarColor(s.n)+'">'+s.n+'</span></div>'+pb((s.n/mxS)*100,s.name==='Other'?'#98A2AD':scholarBarColor(s.n))+'</div></div>';}).join('')+'</div>'+
+    buildAcc('det','roster','Class roster','Loading...','<div id="det-roster-wrap">'+skeletonRows(8)+'</div>',true)+
     '<div class="sec">By subject</div><div class="card">'+
     Object.keys(c.specials).map(function(s,i){var n=c.specials[s],col=subjectBarColor(i);return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+col+'">'+s+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">'+n+'</span></div>'+pb((n/mxSP)*100,col)+'</div>';}).join('')+'</div>'+
     '<div class="sec">Weekly trend</div><div class="card"><canvas id="c-det-wk" height="80" style="width:100%;display:block"></canvas></div>'+
@@ -2506,6 +2617,58 @@ function openDet(id,live){
   showScreen('S-detail');
   setTimeout(function(){
     drawLine('c-det-wk',c.weekly.map(function(w){return w.w;}),c.weekly.map(function(w){return w.n;}));
+    fetchClassRoster(id,function(err,rosterRows){
+      var wrap=document.getElementById('det-roster-wrap');
+      if(!wrap) return;
+      var incCounts={};
+      var maxInc=0;
+      if(c&&c.students){
+        c.students.forEach(function(s){
+          incCounts[s.name]=s.n;
+          if(s.n>maxInc) maxInc=s.n;
+        });
+      }
+      if(err||!rosterRows.length){
+        var fallback=c&&c.students?c.students:[];
+        wrap.innerHTML='<div class="card">'+
+          (fallback.length?fallback.map(function(s){return rosterRow(s.name,s.n,maxInc,true);}).join(''):emptyState('No scholars on record',''))+
+          '</div>';
+        var fallbackMeta=document.querySelector('#acc-chev-det-roster');
+        if(fallbackMeta){
+          var fallbackHdr=fallbackMeta.closest('.acc-hdr')&&fallbackMeta.closest('.acc-hdr').querySelector('.acc-meta');
+          if(fallbackHdr) fallbackHdr.textContent=fallback.length+' scholars with incidents';
+        }
+        wireStudentLinks(wrap,'S-detail');
+        return;
+      }
+      var totalInClass=rosterRows.length;
+      var withIncidents=rosterRows.filter(function(r){return incCounts[r.student_name]>0;}).length;
+      var rosterHeader='<div style="display:flex;justify-content:space-between;align-items:center;'+
+        'padding:0 0 10px;border-bottom:1px solid var(--border);margin-bottom:8px">'+
+        '<div style="font-size:12px;color:var(--text2)">'+totalInClass+' scholars in class</div>'+
+        '<div style="font-size:12px;color:var(--text2)">'+withIncidents+' with logged incidents · '+
+          (totalInClass-withIncidents)+' incident-free</div>'+
+        '</div>';
+      rosterRows.sort(function(a,b){
+        var an=incCounts[a.student_name]||0;
+        var bn=incCounts[b.student_name]||0;
+        if(bn!==an) return bn-an;
+        return (a.last_name||'').localeCompare(b.last_name||'');
+      });
+      wrap.innerHTML='<div class="card">'+rosterHeader+
+        rosterRows.map(function(r){
+          var n=incCounts[r.student_name]||0;
+          return rosterRow(r.student_name,n,maxInc,n>0);
+        }).join('')+
+        '</div>';
+      var accMeta=document.querySelector('#acc-chev-det-roster');
+      if(accMeta){
+        var hdrLeft=accMeta.closest('.acc-hdr')&&accMeta.closest('.acc-hdr').querySelector('.acc-meta');
+        if(hdrLeft) hdrLeft.textContent=totalInClass+' scholars · '+withIncidents+' with incidents';
+      }
+      wireStudentLinks(wrap,'S-detail');
+      animateListIn(wrap);
+    });
     // fetch and render individual incidents
     fetchClassIncidents(id, function(err, rows){
       var countEl=el('det-inc-count');
@@ -2748,6 +2911,15 @@ el('es-save').addEventListener('click',function(){
     home_contact:el('es-home').checked,
     notes:el('es-notes').value.trim()||null
   };
+  var selectedColorChip=document.querySelector('#es-color-wrap .edit-chip.on');
+  var editColorTransition=selectedColorChip?selectedColorChip.dataset.ec:'';
+  var editColorResolved=!!(el('es-resolved')&&el('es-resolved').checked);
+  if(editColorTransition){
+    var colorNote='Color transition: '+editColorTransition;
+    if(editColorResolved) colorNote+=' → Returned to Green';
+    var existingNotes=(updates.notes||'').replace(/\nColor transition:.*$/m,'').trim();
+    updates.notes=(existingNotes?existingNotes+'\n':'')+colorNote;
+  }
   if(!updates.student){status.textContent='Scholar name required';status.style.color='var(--red)';return;}
 
   function resetSaveBtn(){saveBtn.textContent='Save changes';saveBtn.disabled=false;}
@@ -2756,6 +2928,26 @@ el('es-save').addEventListener('click',function(){
     resetSaveBtn();
     closeEditSheet();
     showToast('Changes saved');
+    if(editColorTransition&&EDIT_STATE.dbId){
+      var transition={
+        student:updates.student,
+        homeroom:updates.homeroom,
+        specials:updates.specials,
+        from_color:'Green',
+        to_color:editColorTransition,
+        resolved_at:editColorResolved?new Date().toISOString():null,
+        incident_id:parseInt(EDIT_STATE.dbId,10),
+        notes:updates.notes||'',
+        submitted_by:SESSION.email||'unknown',
+        school_year:NOTIF_SCHOOL_YEAR,
+        school_id:NOTIF_SCHOOL_ID
+      };
+      authedFetch('/rest/v1/color_transitions',{
+        method:'POST',
+        headers:{'Prefer':'return=minimal'},
+        body:JSON.stringify(transition)
+      }).catch(function(err){console.warn('Transition insert from edit failed',err);});
+    }
     STATE.myDbLogs=STATE.myDbLogs.map(function(row){
       if(String(row.id)===String(EDIT_STATE.dbId)){
         return Object.assign({},row,{student:updates.student,homeroom:updates.homeroom,specials:updates.specials,subject:updates.specials,behaviors:updates.behaviors,incident_date:updates.incident_date,incident_time:updates.incident_time,color_chart:updates.color_chart,home_contact:updates.home_contact,notes:updates.notes});
@@ -2802,7 +2994,7 @@ el('es-save').addEventListener('click',function(){
     // session-only log
     STATE.logs=STATE.logs.map(function(l){
       if(('s-'+l.id)===EDIT_STATE.uid){
-        return Object.assign({},l,{studentName:updates.student,homeroom:updates.homeroom,specials:updates.specials,behaviors:updates.behaviors,date:updates.incident_date,time:updates.incident_time,colorChart:updates.color_chart,homeContact:updates.home_contact,notes:updates.notes});
+        return Object.assign({},l,{studentName:updates.student,homeroom:updates.homeroom,specials:updates.specials,behaviors:updates.behaviors,date:updates.incident_date,time:updates.incident_time,colorChart:updates.color_chart,colorTransition:editColorTransition,colorResolved:editColorResolved,homeContact:updates.home_contact,notes:updates.notes});
       }
       return l;
     });
