@@ -1,1 +1,1 @@
-export { bCV } from '../../main.js';
+export {};
