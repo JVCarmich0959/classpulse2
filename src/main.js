@@ -305,6 +305,97 @@ function nowStr(){var d=new Date();return d.toTimeString().slice(0,5);}
 function freshEntry(){return{studentName:'',homeroom:'',specials:'',behaviors:[],date:todayStr(),time:nowStr(),colorChart:false,colorTransition:'',colorResolved:false,homeContact:false,motivation:'',contactMethod:'',notes:''};}
 function el(id){return document.getElementById(id);}
 function pb(pct,col){return '<div class="pbar"><div style="--pw:'+Math.min(pct,100)+'%;background:'+col+'" class="pfill"></div></div>';}
+
+// ── ACCORDION ──
+var ACC_STATE = {};
+function accKey(tab,id){return tab+':'+id;}
+function isAccOpen(tab,id,def){var k=accKey(tab,id);return k in ACC_STATE?ACC_STATE[k]:(def!==false);}
+function buildAcc(tab,id,title,meta,content,def){
+  var open=isAccOpen(tab,id,def!==false);
+  var bid='acc-body-'+tab+'-'+id, cid='acc-chev-'+tab+'-'+id;
+  return '<div class="acc-hdr" onclick="handleAccClick(\''+tab+'\',\''+id+'\')">'+
+    '<div class="acc-hdr-left"><span class="acc-title">'+escHtml(title)+'</span>'+
+    (meta?'<span class="acc-meta">'+escHtml(meta)+'</span>':'')+
+    '</div><span class="acc-chevron'+(open?' open':'')+'" id="'+cid+'">&#8250;</span></div>'+
+    '<div class="acc-body '+(open?'expanded':'collapsed')+'" id="'+bid+'" style="max-height:'+(open?'9999px':'0')+'">'+
+    '<div style="padding-top:12px">'+content+'</div></div>';
+}
+function handleAccClick(tab,id){
+  var key=accKey(tab,id);
+  var wasOpen=isAccOpen(tab,id,true);
+  ACC_STATE[key]=!wasOpen;
+  var bodyEl=document.getElementById('acc-body-'+tab+'-'+id);
+  var chevEl=document.getElementById('acc-chev-'+tab+'-'+id);
+  if(bodyEl){
+    if(ACC_STATE[key]){
+      bodyEl.classList.remove('collapsed');bodyEl.classList.add('expanded');
+      bodyEl.style.maxHeight=(bodyEl.scrollHeight+200)+'px';
+      if(bodyEl.querySelector('canvas')) setTimeout(drawCharts,60);
+    } else {
+      bodyEl.style.maxHeight=bodyEl.scrollHeight+'px';
+      requestAnimationFrame(function(){bodyEl.classList.add('collapsed');bodyEl.classList.remove('expanded');});
+    }
+  }
+  if(chevEl) chevEl.classList.toggle('open',!!ACC_STATE[key]);
+}
+if(typeof window!=='undefined') window.handleAccClick=handleAccClick;
+
+// ── PROFILE DROPDOWN ──
+var _profileDropdownInited=false;
+function maybeInitProfileDropdown(){
+  if(_profileDropdownInited) return;
+  _profileDropdownInited=true;
+  initProfileDropdown();
+}
+function initProfileDropdown(){
+  var btn=el('btn-profile'), dropdown=el('profile-dropdown');
+  if(!btn||!dropdown) return;
+  function updateDisplay(){
+    var email=SESSION.email||'', short=email.split('@')[0]||'';
+    var initial=short.charAt(0).toUpperCase();
+    var name=short.replace(/\./g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();});
+    var pl=el('profile-label'),pi=el('profile-initial'),dn=el('dropdown-name'),de=el('dropdown-email');
+    if(pl) pl.textContent=short;
+    if(pi) pi.textContent=initial;
+    if(dn) dn.textContent=name;
+    if(de) de.textContent=email;
+    var tl=el('dd-theme-label');
+    if(tl) tl.textContent=document.documentElement.getAttribute('data-theme')==='dark'?'Light mode':'Dark mode';
+  }
+  function openDD(){
+    dropdown.style.display='block';
+    requestAnimationFrame(function(){dropdown.style.opacity='1';dropdown.style.transform='translateY(0)';});
+  }
+  function closeDD(){
+    dropdown.style.opacity='0';dropdown.style.transform='translateY(-6px)';
+    setTimeout(function(){dropdown.style.display='none';},180);
+  }
+  btn.addEventListener('click',function(e){
+    e.stopPropagation();
+    var isOpen=dropdown.style.display!=='none'&&dropdown.style.opacity!=='0';
+    if(isOpen){closeDD();}else{updateDisplay();openDD();}
+  });
+  document.addEventListener('click',function(e){
+    if(!dropdown.contains(e.target)&&!btn.contains(e.target)&&dropdown.style.display!=='none') closeDD();
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'&&dropdown.style.display!=='none') closeDD();
+  });
+  var ddt=el('dd-theme');
+  if(ddt) ddt.addEventListener('click',function(){
+    toggleTheme();
+    var tl=el('dd-theme-label');
+    if(tl) tl.textContent=document.documentElement.getAttribute('data-theme')==='dark'?'Light mode':'Dark mode';
+    closeDD();
+  });
+  var ddc=el('dd-csv');
+  if(ddc) ddc.addEventListener('click',function(){closeDD();if(typeof exportCSV==='function') exportCSV();});
+  var dda=el('dd-alerts');
+  if(dda) dda.addEventListener('click',function(){closeDD();setTab('alerts');});
+  var dds=el('dd-signout');
+  if(dds) dds.addEventListener('click',function(){closeDD();signOut();});
+  updateDisplay();
+}
 var INSTALL_PROMPT_EVENT=null;
 function initTheme(){
   var saved=localStorage.getItem('cp-theme');
@@ -550,7 +641,7 @@ function initKeyboardShortcuts() {
       if (dc && dc.classList.contains('show')) { closeDelConfirm(); return; }
     }
     if (typing) return;
-    var tabMap = {'1':'overview','2':'timing','3':'coverage','4':'students','5':'firstaid'};
+    var tabMap = {'1':'overview','2':'timing','3':'students','4':'firstaid','5':'alerts'};
     if (tabMap[e.key] && !e.metaKey && !e.ctrlKey) { setTab(tabMap[e.key]); return; }
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
@@ -691,12 +782,12 @@ function updateNavActive(screenId){
   document.querySelectorAll('.ni').forEach(function(b){
     b.classList.remove('on');
   });
-  var adminNav=document.getElementById('admin-bnav');
-  var teacherNav=document.getElementById('teacher-bnav');
-  var isAdminScreen=screenId==='S-admin'||screenId==='S-classes'||screenId==='S-detail'||screenId==='S-student';
-  var isTeacherScreen=screenId==='S-teacher'||screenId==='S-log';
-  if(adminNav) adminNav.style.display=isAdminScreen?'flex':'none';
-  if(teacherNav) teacherNav.style.display=isTeacherScreen?'flex':'none';
+  var adminNav  = document.getElementById('admin-bnav');
+  var teacherNav = document.getElementById('teacher-bnav');
+  var isAdminScreen   = ['S-admin','S-classes','S-detail','S-student'].indexOf(screenId) !== -1;
+  var isTeacherScreen = ['S-teacher','S-log'].indexOf(screenId) !== -1;
+  if(adminNav)   adminNav.style.display   = isAdminScreen   ? 'flex' : 'none';
+  if(teacherNav) teacherNav.style.display = isTeacherScreen ? 'flex' : 'none';
   var activeId=navMap[screenId];
   if(activeId){
     var btn=document.getElementById(activeId);
@@ -718,7 +809,7 @@ function updateTeacherNav(){
   if(sw) sw.style.display = SESSION.role === 'admin' ? '' : 'none';
 }
 
-function goAdmin(){updateUserDisplay();showScreen('S-admin');STATE.adminTab='overview';document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='overview');});startNotifPolling();renderAdmin();updateLogBadge();}
+function goAdmin(){updateUserDisplay();showScreen('S-admin');STATE.adminTab='overview';document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='overview');});startNotifPolling();renderAdmin();updateLogBadge();maybeInitProfileDropdown();}
 function showPane(pane){
   el('T-log').style.display=pane==='log'?'flex':'none';
   el('T-hist').style.display=pane==='hist'?'flex':'none';
@@ -994,14 +1085,13 @@ function fetchNotifications(cb){
 
 function updateNotifBadge(){
   var unread=(STATE.notifRows||[]).filter(function(n){
-    var readBy=Array.isArray(n.read_by)?n.read_by:[];
-    return readBy.indexOf(SESSION.email)===-1;
+    return (Array.isArray(n.read_by)?n.read_by:[]).indexOf(SESSION.email)===-1;
   }).length;
-  var badge=document.getElementById('notif-badge');
-  if(badge){
-    badge.style.display=unread>0?'inline-flex':'none';
-    badge.textContent=unread>9?'9+':String(unread);
-  }
+  var ddBadge=el('dropdown-notif-badge');
+  if(ddBadge){ddBadge.style.display=unread>0?'inline-block':'none';ddBadge.textContent=unread>9?'9+':String(unread);}
+  var dot=el('profile-alert-dot');
+  if(dot) dot.style.display=unread>0?'block':'none';
+  ['notif-badge','alerts-tab-badge'].forEach(function(id){var o=document.getElementById(id);if(o)o.remove();});
 }
 
 function startNotifPolling(){
@@ -1579,7 +1669,6 @@ function renderAdmin(){
   var content='';
   if(t==='overview') content=bOV(live);
   else if(t==='timing'){ content=bTM(live); setTimeout(function(){ wireHeat('all'); },50); }
-  else if(t==='coverage') content=bCV();
   else if(t==='students') content=bST(live);
   else if(t==='firstaid') content=bFA();
   else if(t==='alerts') content=bAL();
@@ -1601,10 +1690,6 @@ function renderAdmin(){
   body.querySelectorAll('[data-alert-tab]').forEach(function(btn){
     btn.addEventListener('click',function(){setTab(btn.dataset.alertTab);});
   });
-  var notifBtn=document.getElementById('btn-notif');
-  if(notifBtn){
-    notifBtn.addEventListener('click',function(){setTab('alerts');});
-  }
   if(t==='firstaid') {
     body.querySelectorAll('[data-fa-spec]').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
@@ -1734,14 +1819,13 @@ function bFA() {
       }).join('')
     : '<div style="text-align:center;padding:24px 0;color:var(--text3);font-size:12px">No records match this filter.</div>';
 
-  return '<div class="sec">First Aid / Injury Log</div>' +
-    '<div class="kpi-grid" style="margin-bottom:12px">' +
+  var kpiContent='<div class="kpi-grid" style="margin-bottom:12px">' +
       kpiH('Total incidents', total, 'all time', false) +
       kpiH('Home contacted', homePct + '%', homeYes + ' of ' + total, homePct < 50) +
       kpiH('Returned to activity', returnPct + '%', returnedYes + ' of ' + total, returnPct < 80) +
-    '</div>' +
-    filterBar +
-    cards;
+    '</div>';
+  return buildAcc('fa','kpis','Summary',total+' records',kpiContent,true) +
+    buildAcc('fa','log','Incident log','',filterBar + cards,true);
 }
 
 // Toggle expand/collapse for a first aid card
@@ -1770,33 +1854,39 @@ function bAL(){
   markAllNotifsRead();
   var severityColor={critical:'#c0392b',warning:'#BFA95F',info:'#271A70'};
   var severityLabel={critical:'Critical',warning:'Warning',info:'Info'};
-  var cards=rows.map(function(n){
-    var color=severityColor[n.severity]||'#271A70';
-    var label=severityLabel[n.severity]||'Info';
-    var time=n.created_at?new Date(n.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
-    var isRead=Array.isArray(n.read_by)&&n.read_by.indexOf(SESSION.email)!==-1;
-    return '<div class="card" style="margin-bottom:8px;border-left:3px solid '+color+';opacity:'+(isRead?'0.65':'1')+'">'+
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
-        '<div>'+
-          '<span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:'+color+'">'+escHtml(label)+'</span>'+
-          (n.student?'<span style="font-size:10px;color:var(--text3);margin-left:8px">'+escHtml(n.student)+' · '+escHtml(n.homeroom||'')+'</span>':'')+
+  function renderNotifCards(list){
+    return list.map(function(n){
+      var color=severityColor[n.severity]||'#271A70';
+      var label=severityLabel[n.severity]||'Info';
+      var time=n.created_at?new Date(n.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+      var isRead=Array.isArray(n.read_by)&&n.read_by.indexOf(SESSION.email)!==-1;
+      return '<div class="card" style="margin-bottom:8px;border-left:3px solid '+color+';opacity:'+(isRead?'0.65':'1')+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
+          '<div>'+
+            '<span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:'+color+'">'+escHtml(label)+'</span>'+
+            (n.student?'<span style="font-size:10px;color:var(--text3);margin-left:8px">'+escHtml(n.student)+' · '+escHtml(n.homeroom||'')+'</span>':'')+
+          '</div>'+
+          '<span style="font-size:10px;color:var(--text3);white-space:nowrap;margin-left:8px">'+escHtml(time)+'</span>'+
         '</div>'+
-        '<span style="font-size:10px;color:var(--text3);white-space:nowrap;margin-left:8px">'+escHtml(time)+'</span>'+
-      '</div>'+
-      '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">'+escHtml(n.title)+'</div>'+
-      '<div style="font-size:12px;color:var(--text2);line-height:1.6">'+escHtml(n.body)+'</div>'+
-      (n.student?
-        '<div style="margin-top:10px">'+
-          '<button class="pill" style="font-size:10px;padding:4px 10px" data-stu="'+escAttr(n.student)+'">'+
-            'View '+escHtml(String(n.student).split(' ')[0])+'\'s profile'+
-          '</button>'+
-        '</div>'
-      :'')+
-    '</div>';
-  }).join('');
-  return '<div class="sec">Staff Alerts</div>'+cards;
+        '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">'+escHtml(n.title)+'</div>'+
+        '<div style="font-size:12px;color:var(--text2);line-height:1.6">'+escHtml(n.body)+'</div>'+
+        (n.student?
+          '<div style="margin-top:10px">'+
+            '<button class="pill" style="font-size:10px;padding:4px 10px" data-stu="'+escAttr(n.student)+'">'+
+              'View '+escHtml(String(n.student).split(' ')[0])+'\'s profile'+
+            '</button>'+
+          '</div>'
+        :'')+
+      '</div>';
+    }).join('');
+  }
+  var critical=rows.filter(function(n){return n.severity==='critical';});
+  var warning=rows.filter(function(n){return n.severity==='warning';});
+  var info=rows.filter(function(n){return n.severity!=='critical'&&n.severity!=='warning';});
+  return (critical.length ? buildAcc('al','critical','Critical',critical.length+' alerts',renderNotifCards(critical),true) : '')+
+    (warning.length ? buildAcc('al','warning','Warnings',warning.length+' alerts',renderNotifCards(warning),true) : '')+
+    (info.length ? buildAcc('al','info','Info',info.length+' alerts',renderNotifCards(info),false) : '');
 }
-
 function bOV(live){
   var criticalUnread=(STATE.notifRows||[]).filter(function(n){
     var readBy=Array.isArray(n.read_by)?n.read_by:[];
@@ -1819,39 +1909,76 @@ function bOV(live){
   var dateRange=LD.date_range||'No data';
   var uniqueDays=LD.unique_days||0;
   var perDay=LD.per_day||'—';
-  return alertStrip+'<div class="kpi-grid">' +
+  var kpiGrid='<div class="kpi-grid">' +
     kpiH('Total incidents',tot,dateRange,false)+
     kpiH('Per logged incident day',perDay,uniqueDays+' logged incident days',false)+
     kpiH('Color chart used',chartPct+'%',(LD.chart_yes||0)+' of '+LD.total+' incidents',false)+
     kpiH('Home contacted',homePct+'%',(LD.home_yes||0)+' of '+LD.total+' incidents',true)+
-    '</div>'+
-    '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">Weekly incidents / logged incident day</div>'+
+    '</div>';
+  var weeklyCard='<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">Weekly incidents / logged incident day</div>'+
     '<canvas id="c-wk" height="80" style="width:100%;display:block" data-live="1"></canvas>'+
     '<div style="display:flex;gap:12px;margin-top:8px">'+
     '<span style="font-size:10px;color:var(--text2);display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:2px;background:#271A70;border-radius:1px"></span>Incidents/logged day</span>'+
-    '</div></div>'+
-    '<div class="sec">Incidents by grade</div><div class="card"><canvas id="c-gr" height="100" style="width:100%;display:block"></canvas></div>'+
-    '<div class="sec">Behavior types <span style="font-weight:400;color:var(--text3);font-size:10px;text-transform:none;letter-spacing:0">(tagged incidents · multi-select)</span></div><div class="card">'+
-    (function(){var beh=LD.behaviors||[];if(!beh.length)return '<div style="font-size:11px;color:var(--text3);padding:8px 0">No live data yet.</div>';var mx=beh.reduce(function(a,b){return Math.max(a,b.n);},0)||1;return beh.map(function(b,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+displayBehavior(b.t)+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;color:'+(b.t==='Unspecified'?'var(--text3)':'var(--text2)')+'">'+b.n+'</span></div>'+pb((b.n/mx)*100,b.t==='Unspecified'?'#98A2AD':BEHAVIOR_COLORS[i%BEHAVIOR_COLORS.length])+'</div>';}).join('');}())+'</div>'+
-    '<div class="sec">By subject</div><div class="card">'+
+    '</div></div>';
+  var gradeCard='<div class="card"><canvas id="c-gr" height="100" style="width:100%;display:block"></canvas></div>';
+  var behaviorCard='<div class="card">'+
+    (function(){var beh=LD.behaviors||[];if(!beh.length)return '<div style="font-size:11px;color:var(--text3);padding:8px 0">No live data yet.</div>';var mx=beh.reduce(function(a,b){return Math.max(a,b.n);},0)||1;return beh.map(function(b,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+displayBehavior(b.t)+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;color:'+(b.t==='Unspecified'?'var(--text3)':'var(--text2)')+'">'+b.n+'</span></div>'+pb((b.n/mx)*100,b.t==='Unspecified'?'#98A2AD':BEHAVIOR_COLORS[i%BEHAVIOR_COLORS.length])+'</div>';}).join('');}())+'</div>';
+  var subjectCard='<div class="card">'+
     (function(){
       var specList=LD.specials&&LD.specials.length?LD.specials:[];
       if(!specList.length) return '<div style="font-size:11px;color:var(--text3);padding:8px 0">No live data yet.</div>';
       var mx=specList[0].total||1;
       return specList.map(function(s,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+subjectBarColor(i)+'">'+s.n+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">'+s.total+'</span></div>'+pb((s.total/mx)*100,subjectBarColor(i))+'</div>';}).join('');
     }())+'</div>';
+  return alertStrip +
+    buildAcc('ov','kpi','Summary',tot+' incidents',kpiGrid,true) +
+    buildAcc('ov','weekly','Weekly trend','',weeklyCard,true) +
+    buildAcc('ov','grade','By grade','',gradeCard,true) +
+    buildAcc('ov','behavior','Behavior types','tagged · multi-select',behaviorCard,true) +
+    buildAcc('ov','subject','By subject','',subjectCard,true);
 }
 function bTM(live){
   var rows=STATE.liveRows||[];
   if(!rows.length){
     return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
   }
-  return '<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per logged incident day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>'+
-    '<div class="sec">Weekly longitudinal trend</div><div class="card"><canvas id="c-tm-wk" height="80" style="width:100%;display:block"></canvas></div>'+
-    '<div class="sec">Monthly incident totals</div><div class="card"><canvas id="c-tm-mo" height="90" style="width:100%;display:block"></canvas></div>'+
-    '<div class="sec">By class block</div><div class="card"><canvas id="c-tm-pd" height="90" style="width:100%;display:block"></canvas></div>'+
-    '<div class="sec">When it happens</div><div class="card" id="heat-card" style="overflow-x:auto">'+bHeat('all')+'</div>';
+  var total=rows.length;
+  var hasStudent=rows.filter(function(r){return r.student&&r.student.trim();}).length;
+  var hasSubject=rows.filter(function(r){return r.subject||r.specials;}).length;
+  var hasBehavior=rows.filter(function(r){return r.behaviors&&r.behaviors.length;}).length;
+  var hasChart=rows.filter(function(r){return r.color_chart;}).length;
+  var hasHome=rows.filter(function(r){return r.home_contact;}).length;
+  var hasTime=rows.filter(function(r){return r.incident_time;}).length;
+  var fields=[
+    {f:'Scholar name',n:hasStudent},
+    {f:'Subject',n:hasSubject},
+    {f:'Behavior type',n:hasBehavior},
+    {f:'Time logged',n:hasTime},
+    {f:'Color chart response',n:hasChart},
+    {f:'Home contact',n:hasHome}
+  ];
+  var dowContent='<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:6px">Incidents per logged incident day · by weekday</div><canvas id="c-dow" height="90" style="width:100%;display:block"></canvas></div>';
+  var weeklyContent='<div class="card"><canvas id="c-tm-wk" height="80" style="width:100%;display:block"></canvas></div>';
+  var monthContent='<div class="card"><canvas id="c-tm-mo" height="90" style="width:100%;display:block"></canvas></div>';
+  var periodContent='<div class="card"><canvas id="c-tm-pd" height="90" style="width:100%;display:block"></canvas></div>';
+  var heatContent='<div class="card" id="heat-card" style="overflow-x:auto">'+bHeat('all')+'</div>';
+  var compContent='<div class="card">'+fields.map(function(f){
+      var p=Math.round(f.n/total*100);
+      var c=p>=90?'#271A70':p>=50?'#BFA95F':'#98A2AD';
+      return '<div style="margin-bottom:10px">'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">'+
+        '<span>'+f.f+'</span>'+
+        '<span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;color:'+c+'">'+p+'%</span>'+
+        '</div>'+pb(p,c)+'</div>';
+    }).join('')+'</div>';
+  return buildAcc('tm','heat','When it happens','by period and day',heatContent,true) +
+    buildAcc('tm','dow','Day of week','',dowContent,true) +
+    buildAcc('tm','weekly','Weekly trend','',weeklyContent,true) +
+    buildAcc('tm','monthly','Monthly totals','',monthContent,true) +
+    buildAcc('tm','period','By class block','',periodContent,true) +
+    buildAcc('tm','complete','Field completeness','',compContent,false);
 }
+
 // ── INTERACTIVE HEATMAP ──
 var PERIODS=[
   {label:'P1',start:'7:50',end:'8:45'},
@@ -2062,123 +2189,6 @@ function bHeat(subjectFilter){
 function wireHeat(subjectFilter){
   wireHeatCard('heat-card', STATE.liveRows||[], {prefix:'heat',showFilters:true,subjectFilter:subjectFilter||'all'});
 }
-function bCV(){
-  var rows=STATE.liveRows||[];
-  var total=rows.length;
-
-  if(!total){
-    return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
-  }
-
-  // build subject breakdown from live data
-  var subjMap={};
-  var subjWeeks={};
-  var subjChart={};
-  var subjLag=[];
-  rows.forEach(function(r){
-    var s=r.subject||r.specials||'Unknown';
-    subjMap[s]=(subjMap[s]||0)+1;
-    if(r.color_chart) subjChart[s]=(subjChart[s]||0)+1;
-    // lag: time between incident_date and created_at
-    if(r.incident_date&&r.created_at){
-      var inc=new Date(r.incident_date+'T12:00:00');
-      var cre=new Date(r.created_at);
-      var lag=(cre-inc)/(1000*3600);
-      if(lag>=0&&lag<168) subjLag.push({s:s,lag:lag});
-    }
-    // week tracking
-    if(r.incident_date){
-      var d=new Date(r.incident_date+'T12:00:00');
-      var day=d.getDay();
-      var mon=new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
-      var wk=mon.toISOString().slice(0,10);
-      if(!subjWeeks[s]) subjWeeks[s]={};
-      subjWeeks[s][wk]=1;
-    }
-  });
-
-  // get total unique weeks in dataset
-  var allWeeks={};
-  rows.forEach(function(r){
-    if(!r.incident_date) return;
-    var d=new Date(r.incident_date+'T12:00:00');
-    var day=d.getDay();
-    var mon=new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
-    allWeeks[mon.toISOString().slice(0,10)]=1;
-  });
-  var totalWks=Object.keys(allWeeks).length||1;
-
-  // avg lag per subject
-  var lagBySubj={};
-  subjLag.forEach(function(x){
-    if(!lagBySubj[x.s]) lagBySubj[x.s]={sum:0,n:0};
-    lagBySubj[x.s].sum+=x.lag;
-    lagBySubj[x.s].n++;
-  });
-
-  function cc(c){return c>=60?'#271A70':c>=25?'#BFA95F':'#98A2AD';}
-  function pc(p){return p>=80?'#271A70':p>=50?'#BFA95F':'#98A2AD';}
-  function lc(l){return l<=2?'#271A70':l<=5?'#BFA95F':'#98A2AD';}
-
-  var subjects=Object.keys(subjMap).sort(function(a,b){return subjMap[b]-subjMap[a];});
-
-  var tableHtml='<div class="card" style="overflow-x:auto"><table class="ctable">'+
-    '<thead><tr>'+
-    '<th style="text-align:left">Subject</th>'+
-    '<th>Total</th>'+
-    '<th>Weeks active</th>'+
-    '<th>Avg lag</th>'+
-    '<th>Chart %</th>'+
-    '</tr></thead><tbody>'+
-    subjects.map(function(s){
-      var n=subjMap[s];
-      var wks=Object.keys(subjWeeks[s]||{}).length;
-      var wkPct=Math.round(wks/totalWks*100);
-      var lagD=lagBySubj[s];
-      var lag=lagD?parseFloat((lagD.sum/lagD.n).toFixed(1)):null;
-      var chartPct=Math.round(((subjChart[s]||0)/n)*100);
-      var color=SC[s]||'var(--text)';
-      return '<tr>'+
-        '<td style="font-weight:600;color:'+color+'">'+escHtml(s)+'</td>'+
-        '<td style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;text-align:center">'+n+'</td>'+
-        '<td style="text-align:center"><span style="font-size:10px;color:'+pc(wkPct)+'">'+wks+'/'+totalWks+' ('+wkPct+'%)</span></td>'+
-        '<td style="text-align:center">'+(lag!==null?'<span class="tag" style="background:'+lc(lag)+'22;color:'+lc(lag)+'">'+lag+'h</span>':'<span style="color:var(--text3)">—</span>')+'</td>'+
-        '<td style="text-align:center"><span class="tag" style="background:'+cc(chartPct)+'22;color:'+cc(chartPct)+'">'+chartPct+'%</span></td>'+
-      '</tr>';
-    }).join('')+
-  '</tbody></table></div>';
-
-  // field completeness from live data
-  var hasStudent=rows.filter(function(r){return r.student&&r.student.trim();}).length;
-  var hasSubject=rows.filter(function(r){return r.subject||r.specials;}).length;
-  var hasBehavior=rows.filter(function(r){return r.behaviors&&r.behaviors.length;}).length;
-  var hasChart=rows.filter(function(r){return r.color_chart;}).length;
-  var hasHome=rows.filter(function(r){return r.home_contact;}).length;
-  var hasTime=rows.filter(function(r){return r.incident_time;}).length;
-
-  var fields=[
-    {f:'Scholar name',n:hasStudent},
-    {f:'Subject',n:hasSubject},
-    {f:'Behavior type',n:hasBehavior},
-    {f:'Time logged',n:hasTime},
-    {f:'Color chart response',n:hasChart},
-    {f:'Home contact',n:hasHome}
-  ];
-
-  var completenessHtml='<div class="sec">Field completeness · '+total+' records</div><div class="card">'+
-    fields.map(function(f){
-      var p=Math.round(f.n/total*100);
-      var c=p>=90?'#271A70':p>=50?'#BFA95F':'#98A2AD';
-      return '<div style="margin-bottom:10px">'+
-        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">'+
-        '<span>'+f.f+'</span>'+
-        '<span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;color:'+c+'">'+p+'%</span>'+
-        '</div>'+pb(p,c)+'</div>';
-    }).join('')+'</div>';
-
-  return '<div class="sec">By subject · '+total+' total incidents</div>'+
-    tableHtml+completenessHtml;
-}
 function bST(live){
   if(!STATE.liveLoaded) return skeletonRows(10, ['95%','87%','80%','73%','65%','57%','50%','43%','36%','28%']);
   var LD=live||{};
@@ -2191,8 +2201,10 @@ function bST(live){
   '</div>';
   if(!stuList.length) return searchHtml + '<div class="card">' + emptyState('No scholars meet this threshold', 'Incidents will appear here as data accumulates.') + '</div>';
   var mx=stuList[0].n||1;
-  return searchHtml + '<div class="sec">Scholars with 4+ logged incidents</div><div class="card">'+
+  var listContent='<div class="card">'+
     stuList.map(function(s){return '<div class="li" data-scholar-row="1" data-stu="'+escAttr(s.name)+'"><div class="li-c"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span class="scholar-name">'+stuNameLink(s.name)+'</span><span class="inc-count" style="color:'+scholarBarColor(s.n)+'">'+s.n+'</span></div>'+pb((s.n/mx)*100,scholarBarColor(s.n))+'</div></div>';}).join('')+'</div>';
+  return buildAcc('st','list','Scholars with 4+ incidents',stuList.length+' scholars',searchHtml+listContent,true) +
+    buildAcc('st','system','System notes','','',false);
 }
 function bCL(live){
   var LD=live||{};
@@ -2663,16 +2675,18 @@ function drawBar(id,labels,data,colors){
 // ── WIRE EVENTS ──
 el('btn-t-signout') && el('btn-t-signout').addEventListener('click',signOut);
 el('btn-th-signout') && el('btn-th-signout').addEventListener('click',signOut);
-el('btn-a-signout') && el('btn-a-signout').addEventListener('click',signOut);
+var bae=el('btn-a-signout');    if(bae) bae.addEventListener('click',signOut);
+var btt=el('btn-theme-toggle'); if(btt) btt.addEventListener('click',toggleTheme);
+var bte=el('btn-export');       if(bte) bte.addEventListener('click',exportCSV);
+var btn2=el('btn-notif');       if(btn2) btn2.addEventListener('click',function(){setTab('alerts');});
+var bal=el('btn-a-log');        if(bal) bal.addEventListener('click',goTeacher);
+var anDash=el('AN-dash');       if(anDash) anDash.addEventListener('click',function(){ if(SESSION.role!=='admin') return; goAdmin(); });
 el('btn-t-switch').addEventListener('click',function(){ if(SESSION.role==='admin') goAdmin(); });
 el('btn-th-switch').addEventListener('click',function(){ if(SESSION.role==='admin') goAdmin(); });
 el('TN-log').addEventListener('click',function(){showPane('log');});
 el('TN-hist').addEventListener('click',function(){showPane('hist');});
 el('T-overlay').addEventListener('click',closeSheet);
 el('btn-log-another').addEventListener('click',closeSheet);
-el('btn-a-log').addEventListener('click',goTeacher);
-el('btn-export') && el('btn-export').addEventListener('click',exportCSV);
-el('btn-theme-toggle') && el('btn-theme-toggle').addEventListener('click',toggleTheme);
 el('AN-classes').addEventListener('click',function(){ if(SESSION.role!=='admin') return; STATE.clsFilter='all';showScreen('S-classes');renderClsExplorer(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);});
 el('AN-log').addEventListener('click',goTeacher);
 el('btn-cls-back').addEventListener('click',function(){showScreen('S-admin',true);});
@@ -2903,10 +2917,10 @@ export {
   fetchLiveData, buildLiveStats, fetchClassIncidents, fetchStudentIncidents, renderIncidentList,
   sbInsert,
   drawLine, drawBar, wireChartTooltip, pb,
-  wireHeatCard,
+  wireHeatCard, buildAcc, handleAccClick,
   openEditSheet, closeEditSheet, populateEditSheet, openDelConfirm, closeDelConfirm,
   renderStep, goTeacher, showPane, closeSheet, renderHistory, fetchMyLogs,
-  goAdmin, renderAdmin, setTab, bOV, bAL, bTM, bCV, bST, bCL,
+  goAdmin, renderAdmin, setTab, bOV, bAL, bTM, bST, bCL,
   renderClsExplorer, filterClasses, openDet, showScreen, escHtml,
   openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen, displayBehavior,
   skeletonRows, skeletonKpis, animateListIn, showToast, emptyState

@@ -113,7 +113,33 @@
 
 <div id="S-admin" class="screen hidden">
   <div class="st"></div>
-  <div class="topbar"><div><h1>Dashboard</h1><div class="sub" id="admin-sub">Loading live data</div></div><div style="display:flex;gap:6px"><button class="pill" id="btn-theme-toggle" type="button" style="font-size:11px">[ Dark ]</button><button class="pill" id="btn-notif" style="position:relative;font-size:11px">Alerts<span id="notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:#c0392b;color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 4px;min-width:14px;text-align:center;line-height:14px"></span></button><button class="pill" id="btn-export" style="font-size:11px">CSV</button><button class="pill" id="btn-a-log">Log</button><button class="pill" id="btn-a-signout" style="color:var(--red);border-color:rgba(192,57,43,.3)">Sign out</button></div></div>
+  <div class="topbar">
+    <div>
+      <h1>Dashboard</h1>
+      <div class="sub" id="admin-sub">live data</div>
+    </div>
+    <button id="btn-profile" style="background:none;border:1px solid var(--border);border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;color:var(--indigo);cursor:pointer;display:flex;align-items:center;gap:6px;transition:background 0.18s ease,border-color 0.18s ease;font-family:inherit;position:relative">
+      <span id="profile-initial" style="width:22px;height:22px;border-radius:50%;background:var(--indigo);color:#ffffff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">?</span>
+      <span id="profile-label">Account</span>
+      <span style="font-size:10px;color:var(--text3);margin-left:2px">&#9662;</span>
+      <span id="profile-alert-dot" style="display:none;position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#c0392b;border:2px solid var(--panel)"></span>
+    </button>
+  </div>
+
+  <div id="profile-dropdown" style="display:none;position:absolute;top:calc(var(--st) + 54px);right:14px;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(39,26,112,0.16);z-index:200;min-width:224px;overflow:hidden;opacity:0;transform:translateY(-6px);transition:opacity 0.18s ease,transform 0.18s ease">
+    <div style="padding:14px 16px 10px;border-bottom:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:700;color:var(--indigo)" id="dropdown-name">—</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px" id="dropdown-email">—</div>
+      <div style="font-size:10px;color:var(--gold);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-top:4px">Administrator</div>
+    </div>
+    <div style="padding:6px 0">
+      <button class="dropdown-item" id="dd-theme"><span class="dropdown-item-icon">&#9681;</span><span id="dd-theme-label">Dark mode</span></button>
+      <button class="dropdown-item" id="dd-csv"><span class="dropdown-item-icon">&#8595;</span><span>Export CSV</span></button>
+      <button class="dropdown-item" id="dd-alerts"><span class="dropdown-item-icon">&#9678;</span><span>Alerts</span><span id="dropdown-notif-badge" style="display:none;background:#c0392b;color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;margin-left:auto;min-width:14px;text-align:center;line-height:14px"></span></button>
+      <div style="border-top:1px solid var(--border);margin:6px 0"></div>
+      <button class="dropdown-item" id="dd-signout" style="color:var(--red)"><span class="dropdown-item-icon" style="color:var(--red)">&#8617;</span><span>Sign out</span></button>
+    </div>
+  </div>
   <!-- freshness strip -->
   <div class="fresh-strip">
     <div class="fresh-dot"></div>
@@ -123,7 +149,6 @@
   <div class="tab-row" id="admin-tabs">
     <button class="tab on" data-tab="overview">Overview</button>
     <button class="tab" data-tab="timing">Timing</button>
-    <button class="tab" data-tab="coverage">Coverage</button>
     <button class="tab" data-tab="students">Scholars</button>
     <button class="tab" data-tab="firstaid">First Aid</button>
     <button class="tab" data-tab="alerts">Alerts</button>

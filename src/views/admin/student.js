@@ -1,5 +1,5 @@
 import { SB_URL, SB_KEY } from '../../config.js';
-import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard, displayBehavior, skeletonKpis, skeletonRows, animateListIn, showToast, emptyState, authedFetch } from '../../main.js';
+import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard, displayBehavior, skeletonKpis, skeletonRows, animateListIn, showToast, emptyState, authedFetch, buildAcc } from '../../main.js';
 
 function fetchStudentNote(name, cb){
   if(!SESSION.token){ if(cb) cb(new Error('not authenticated'), ''); return; }
@@ -120,37 +120,34 @@ function openStudent(name, prevScreen){
     if(title) title.textContent = name || 'Scholar';
     if(sub) sub.textContent = total + ' incidents';
 
-    body.innerHTML =
+    var kpiHtml =
       '<div class="kpi-grid" style="margin-bottom:10px">'+
         '<div class="kpi"><div class="lbl">Total incidents</div><div class="val">'+total+'</div></div>'+
         '<div class="kpi"><div class="lbl">Chart used</div><div class="val">'+(total?Math.round(chartY/total*100):0)+'%</div></div>'+
         '<div class="kpi"><div class="lbl">Home contact</div><div class="val">'+(total?Math.round(homeY/total*100):0)+'%</div></div>'+
         '<div class="kpi"><div class="lbl">Top behavior</div><div class="val" style="font-size:13px">'+escHtml(topBehavior)+'</div></div>'+
+      '</div>';
+    var weeklyHtml = '<div class="card" style="margin-bottom:10px"><canvas id="stu-wk-line" height="80" style="width:100%;display:block"></canvas></div>';
+    var heatmapHtml = '<div class="card" id="stu-heat-card" style="margin-bottom:10px;overflow-x:auto"></div>'+
+      '<div class="card" style="margin-bottom:10px"><div style="font-size:11px;color:var(--text2);margin-bottom:6px">Most-logged specials class</div><div style="font-size:14px">'+escHtml(topSpecial)+'</div></div>';
+    var incHtml = '<div id="stu-inc-list"></div>';
+    var firstAidHtml = '<div id="stu-first-aid"></div>';
+    var accomHtml = SESSION.role==='admin' ?
+      '<div class="card" style="margin-bottom:10px">'+
+        '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Admin notes</div>'+
+        '<textarea id="stu-notes-ta" style="width:100%;min-height:88px;background:var(--panel);border:0.5px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit"></textarea>'+
+        '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="pill" id="stu-save-note">Save note</button></div>'+
+        '<div id="stu-note-status" style="font-size:10px;color:var(--text3);margin-top:6px"></div>'+
       '</div>'+
-      '<div class="sec">Weekly trend</div><div class="card" style="margin-bottom:10px"><canvas id="stu-wk-line" height="80" style="width:100%;display:block"></canvas></div>'+
-      '<div class="sec">Weekly pattern heatmap</div><div class="card" id="stu-heat-card" style="margin-bottom:10px;overflow-x:auto"></div>'+
-      '<div class="card" style="margin-bottom:10px"><div style="font-size:11px;color:var(--text2);margin-bottom:6px">Most-logged specials class</div><div style="font-size:14px">'+escHtml(topSpecial)+'</div></div>'+
-      (SESSION.role==='admin' ?
-        '<div class="card" style="margin-bottom:10px">'+
-          '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Admin notes</div>'+
-          '<textarea id="stu-notes-ta" style="width:100%;min-height:88px;background:var(--panel);border:0.5px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit"></textarea>'+
-          '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="pill" id="stu-save-note">Save note</button></div>'+
-          '<div id="stu-note-status" style="font-size:10px;color:var(--text3);margin-top:6px"></div>'+
-        '</div>'
-      : '')+
-      '<div class="sec" style="display:flex;justify-content:space-between;align-items:center">All incidents <span id="stu-inc-meta" style="font-size:10px;color:var(--text3);font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"></span></div>'+
-      '<div id="stu-inc-list"></div>'+
-      '<div style="margin:14px 0;border-top:0.5px solid var(--border)"></div>'+
-      '<div class="sec">First Aid / Injury Log</div>'+
-      '<div id="stu-first-aid"></div>'+
-      (SESSION.role==='admin' ?
-        '<div style="margin:14px 0;border-top:0.5px solid var(--border)"></div>'+
-        '<div class="sec">Accommodations <span style="font-size:9px;color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">Admin only</span></div>'+
-        '<div id="stu-accommodations"></div>'+
-        '<div style="margin:14px 0;border-top:0.5px solid var(--border)"></div>'+
-        '<div class="sec">Color Transition History <span style="font-size:9px;font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0">Admin only</span></div>'+
-        '<div id="stu-transitions"></div>'
-      : '');
+      '<div id="stu-accommodations"></div>' : '';
+    var transHtml = SESSION.role==='admin' ? '<div id="stu-transitions"></div>' : '';
+    body.innerHTML = kpiHtml +
+      buildAcc('stu','trend','Weekly trend','',weeklyHtml,true) +
+      buildAcc('stu','heatmap','Pattern heatmap','',heatmapHtml,true) +
+      buildAcc('stu','incidents','All incidents',total+' records',incHtml,true) +
+      buildAcc('stu','firstaid','First aid / injury log','',firstAidHtml,false) +
+      (SESSION.role==='admin' ? buildAcc('stu','acc','Accommodations','Admin only',accomHtml,false) : '') +
+      (SESSION.role==='admin' ? buildAcc('stu','trans','Color transition history','Admin only',transHtml,false) : '');
 
     if(SESSION.role==='admin'){
       fetchStudentNote(name, function(_e, note){
