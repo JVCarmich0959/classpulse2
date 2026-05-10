@@ -129,3 +129,29 @@ records. Do not hardcode new entries — update this map when teachers change.
 Python patch scripts are not idempotent. Running them twice duplicates
 functions and breaks the build. Always verify with grep before running
 a patch, and always check the output for "ERROR" before building.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FUTURE: ACADEMIC PERFORMANCE LAYER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The following tables are planned but NOT YET BUILT.
+Do not reference them in code until they exist in Supabase.
+
+student_grades:
+  id, student_name, homeroom, subject, standard_code, standard_label,
+  score, score_type ('test'|'quiz'|'assignment'|'observation'),
+  grading_period, logged_by, school_year, school_id, created_at
+
+student_attendance:
+  id, student_name, homeroom, date, status ('present'|'absent'|'tardy'|'early_release'),
+  reason, logged_by, school_year, school_id, created_at
+
+When these tables exist, the scholar profile will show:
+- Attendance KPIs (present %, consecutive absences flag)
+- Academic KPIs (avg score by subject, flagged standards below threshold)
+- Behavioral + academic + attendance clustering (performance cohorts)
+  displayed as a visual scatter/quadrant showing where each scholar
+  sits across behavioral frequency vs academic performance
+
+This is the foundation for the parent-facing academic view and
+the teacher standards-gap analysis dashboard.
+Do not implement until data entry UI is approved.

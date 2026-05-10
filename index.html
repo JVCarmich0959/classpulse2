@@ -210,6 +210,25 @@
   <div class="edit-field"><label>Behaviors</label><div class="edit-chips" id="es-behs"></div></div>
   <div class="edit-field" style="margin-top:10px">
     <div class="edit-tog-row"><span class="edit-tog-lbl">Color chart used</span><label class="tog"><input type="checkbox" id="es-chart"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
+    <div id="es-color-wrap" style="display:none;padding:10px 0 6px;border-bottom:0.5px solid rgba(39,26,112,0.08)">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-weight:500">Color transition</div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px">
+        <button type="button" class="edit-chip" id="es-color-yellow" data-ec="Yellow" style="border-color:#BFA95F;color:#BFA95F">Yellow</button>
+        <button type="button" class="edit-chip" id="es-color-orange" data-ec="Orange" style="border-color:#d4622a;color:#d4622a">Orange</button>
+        <button type="button" class="edit-chip" id="es-color-red" data-ec="Red" style="border-color:#c0392b;color:#c0392b">Red</button>
+      </div>
+      <div class="edit-tog-row" id="es-resolved-row" style="display:none">
+        <div>
+          <div class="edit-tog-lbl">Returned to Green</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">Scholar de-escalated and re-engaged</div>
+        </div>
+        <label class="tog">
+          <input type="checkbox" id="es-resolved">
+          <div class="tog-track"></div>
+          <div class="tog-thumb"></div>
+        </label>
+      </div>
+    </div>
     <div class="edit-tog-row"><span class="edit-tog-lbl">Home contacted</span><label class="tog"><input type="checkbox" id="es-home"><div class="tog-track"></div><div class="tog-thumb"></div></label></div>
   </div>
   <div class="edit-field" style="margin-top:6px"><label>Notes</label><textarea id="es-notes" placeholder="Additional context…"></textarea></div>

@@ -64,3 +64,18 @@
 .acc-body{overflow:hidden;transition:max-height 0.28s cubic-bezier(.4,0,.2,1),opacity 0.2s ease}
 .acc-body.collapsed{max-height:0 !important;opacity:0;pointer-events:none}
 .acc-body.expanded{opacity:1}
+
+/* Color chips in edit sheet — colored borders, fill on selected */
+#es-color-yellow.on { background: #BFA95F !important; color: #ffffff !important; border-color: #BFA95F !important; }
+#es-color-orange.on { background: #d4622a !important; color: #ffffff !important; border-color: #d4622a !important; }
+#es-color-red.on    { background: #c0392b !important; color: #ffffff !important; border-color: #c0392b !important; }
+
+#es-color-wrap {
+  margin: 4px 0 0;
+  padding: 10px 0 6px;
+  border-bottom: 0.5px solid rgba(39,26,112,0.08);
+}
+
+[data-theme="dark"] #es-color-wrap {
+  border-bottom-color: rgba(255,255,255,0.06);
+}
