@@ -9,24 +9,6 @@ import { openStudent, wireStudentLinks, stuNameLink } from './views/admin/studen
 
 
 
-function sbFetch(path, opts){
-  return fetch(SB_URL + path, Object.assign({
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'}
-  }, opts || {}));
-}
-
-function sbInsert(row){
-  return sbFetch('/rest/v1/incidents', {
-    method:'POST',
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
-    body: JSON.stringify(row)
-  });
-}
-
-function sbSelect(query){
-  return sbFetch('/rest/v1/incidents?' + query);
-}
-
 
 // ── FETCH USER ROLE ──
 function fetchRole(userId, cb){
@@ -313,11 +295,13 @@ function gradeFromHomeroom(homeroom) {
 }
 
 var DET_LIVE = {
-  dots:        [],
-  raf:         null,
-  channel:     null,
-  homeroom:    null,
-  running:     false
+  dots:             [],
+  raf:              null,
+  channel:          null,
+  homeroom:         null,
+  running:          false,
+  _greenFloodCount: 0,
+  _greenFloodStart: null
 };
 
 // ── SCHOOL-WIDE PHYSICS ──
@@ -332,13 +316,15 @@ var SW_GRADE_RING = {K:'#8B7BE0','1':'#4ABFA3','2':'#E8C547','3':'#E87D2B','4':'
 var SW_GRADE_R    = {K:4,'1':4.5,'2':5,'3':5.5,'4':6,'5':6.5};
 
 var SW_STATE = {
-  allDots:     [],
-  visibleDots: [],
-  activeGrade: 'all',
-  raf:         null,
-  channel:     null,
-  running:     false,
-  tickLog:     []
+  allDots:          [],
+  visibleDots:      [],
+  activeGrade:      'all',
+  raf:              null,
+  channel:          null,
+  running:          false,
+  tickLog:          [],
+  _greenFloodCount: 0,
+  _greenFloodStart: null
 };
 function setStuPrevScreen(v){ STU_PREV_SCREEN=v||'S-detail'; }
 function getStuPrevScreen(){ return STU_PREV_SCREEN||'S-detail'; }
@@ -400,12 +386,17 @@ function initSchoolWide() {
     .then(function(students){
       students = Array.isArray(students) ? students : [];
       authedFetch('/rest/v1/color_transitions?incident_date=eq.' + encodeURIComponent(today) +
-        '&select=student,to_color,created_at&order=created_at.asc')
+        '&select=student,to_color,created_at,resolved_at&order=created_at.asc')
         .then(function(r){ return r.json(); })
         .then(function(transitions){
           var colorMap = {};
+          var latestSwMap = {};
           (Array.isArray(transitions)?transitions:[]).forEach(function(t){
-            if(t && t.student && SW_PHYSICS[t.to_color]) colorMap[t.student] = t.to_color;
+            if(t && t.student && SW_PHYSICS[t.to_color]) latestSwMap[t.student] = t;
+          });
+          Object.keys(latestSwMap).forEach(function(name){
+            var t = latestSwMap[name];
+            colorMap[name] = t.resolved_at ? 'Green' : t.to_color;
           });
           SW_STATE.allDots = students.map(function(s){
             var color = colorMap[s.student_name] || 'Green';
@@ -483,11 +474,28 @@ function startSchoolWideChannel() {
 
 function swPushTick(first, grade, to) {
   var fill = SW_PHYSICS[to] ? SW_PHYSICS[to].fill : '#98A2AD';
+  var now = Date.now();
+  // Block reset flood detection: many Greens arriving within 3 seconds
+  if (to === 'Green') {
+    SW_STATE._greenFloodCount = (SW_STATE._greenFloodCount || 0) + 1;
+    SW_STATE._greenFloodStart = SW_STATE._greenFloodStart || now;
+    if (now - SW_STATE._greenFloodStart < 3000 && SW_STATE._greenFloodCount > 5) {
+      var ticker = document.getElementById('sw-ticker');
+      if (ticker) ticker.innerHTML =
+        '<span style="color:#4ABFA3;font-weight:600">Block reset</span>' +
+        '<span style="color:var(--text3);margin:0 6px">\u2014</span>' +
+        '<span style="color:var(--text3)">All scholars returned to Green</span>';
+      return;
+    }
+  } else {
+    SW_STATE._greenFloodCount = 0;
+    SW_STATE._greenFloodStart = null;
+  }
   SW_STATE.tickLog.unshift({first:first, grade:grade, to:to, fill:fill});
   if (SW_STATE.tickLog.length > 8) SW_STATE.tickLog.pop();
-  var el = document.getElementById('sw-ticker');
-  if (!el) return;
-  el.innerHTML = SW_STATE.tickLog.map(function(t){
+  var tickerEl = document.getElementById('sw-ticker');
+  if (!tickerEl) return;
+  tickerEl.innerHTML = SW_STATE.tickLog.map(function(t){
     return '<span style="color:'+t.fill+';font-weight:600">'+escHtml(t.first)+'</span>'+
       '<span style="color:var(--text3);font-size:10px;margin:0 4px">'+escHtml(t.grade)+'</span>'+
       '<span style="color:'+t.fill+'">\u2192'+escHtml(t.to)+'</span>'+
@@ -1101,7 +1109,10 @@ function signOut(){
         if(data.access_token){
           saveSession(data.access_token, email, data.user && data.user.id, data.refresh_token);
           updateUserDisplay();
-          showScreen('S-role');
+          fetchRole(data.user && data.user.id, function(err, role) {
+            if (role === 'admin') goAdmin();
+            else goTeacher();
+          });
         } else {
           var msg=data.error_description||data.msg||data.message||'';
           errEl.textContent=msg.toLowerCase().indexOf('invalid login')>=0||msg.toLowerCase().indexOf('invalid credentials')>=0?'Wrong password — or check invite email to set one':msg.toLowerCase().indexOf('email not confirmed')>=0?'Check your invite email first':msg||'Sign-in failed';
@@ -3439,13 +3450,20 @@ function initLiveDots(homeroom, rosterRows) {
   authedFetch('/rest/v1/color_transitions?homeroom=eq.' +
     encodeURIComponent(homeroom) +
     '&incident_date=eq.' + encodeURIComponent(today) +
-    '&select=student,to_color,created_at&order=created_at.asc')
+    '&select=student,to_color,created_at,resolved_at&order=created_at.asc')
     .then(function(r) { return r.json(); })
     .then(function(transitions) {
       if (DET_LIVE.homeroom !== homeroom) return;
+      // Build colorMap using latest transition per student.
+      // resolved_at set = student returned to Green, treat as Green.
       var colorMap = {};
+      var latestMap = {};
       (Array.isArray(transitions) ? transitions : []).forEach(function(t) {
-        if(t && t.student && DET_PHYSICS[t.to_color]) colorMap[t.student] = t.to_color;
+        if(t && t.student && DET_PHYSICS[t.to_color]) latestMap[t.student] = t;
+      });
+      Object.keys(latestMap).forEach(function(name) {
+        var t = latestMap[name];
+        colorMap[name] = t.resolved_at ? 'Green' : t.to_color;
       });
 
       var cols = Math.ceil(Math.sqrt((rows.length || 1) * 1.6));
@@ -3474,6 +3492,12 @@ function initLiveDots(homeroom, rosterRows) {
           pulse:  0,
           trail:  []
         };
+      });
+
+      // Seed ticker with today's transitions newest-first
+      var sorted = (Array.isArray(transitions) ? transitions : []).slice().reverse();
+      sorted.slice(0, 8).forEach(function(t) {
+        if (t && t.student && t.to_color) addLiveLog(t.student, null, t.to_color);
       });
 
       DET_LIVE.running = true;
@@ -3761,19 +3785,44 @@ function stopLiveColorChannel() {
 function addLiveLog(student, from, to) {
   var log = document.getElementById('det-live-log');
   if (!log) return;
-  log.style.display = 'block';
-  var now = new Date();
-  var time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+
+  // Block reset flood detection — many Greens arriving within 3 seconds
+  if (to === 'Green') {
+    DET_LIVE._greenFloodCount = (DET_LIVE._greenFloodCount || 0) + 1;
+    DET_LIVE._greenFloodStart = DET_LIVE._greenFloodStart || Date.now();
+    if (Date.now() - DET_LIVE._greenFloodStart < 3000 && DET_LIVE._greenFloodCount > 3) {
+      log.textContent = '';
+      log.dataset.seeded = '1';
+      var summary = document.createElement('span');
+      summary.style.cssText = 'display:inline-flex;align-items:center;gap:5px;color:#4ABFA3;font-weight:600';
+      summary.textContent = 'Block reset \u2014 class returned to Green';
+      log.appendChild(summary);
+      return;
+    }
+  } else {
+    DET_LIVE._greenFloodCount = 0;
+    DET_LIVE._greenFloodStart = null;
+  }
+
   var fill = DET_PHYSICS[to] ? DET_PHYSICS[to].fill : '#98A2AD';
-  var entry = document.createElement('div');
-  entry.style.cssText = 'display:flex;gap:8px;padding:4px 12px;border-bottom:0.5px solid var(--border);font-size:11px;align-items:center';
+  var first = escHtml((student || '').split(' ')[0]);
+
+  // Clear placeholder text on first real entry
+  if (log.dataset.seeded !== '1') {
+    log.textContent = '';
+    log.dataset.seeded = '1';
+  }
+
+  // Inline ticker entry — newest first
+  var entry = document.createElement('span');
+  entry.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-right:10px;flex-shrink:0';
   entry.innerHTML =
-    '<span style="color:var(--text3);flex-shrink:0;font-variant-numeric:tabular-nums">' + escHtml(time) + '</span>' +
-    '<span style="font-weight:600;color:var(--text)">' + escHtml(student.split(' ')[0]) + '</span>' +
+    '<span style="font-weight:600;color:' + fill + '">' + first + '</span>' +
     '<span style="color:var(--text3)">\u2192</span>' +
     '<span style="color:' + fill + ';font-weight:600">' + escHtml(to) + '</span>';
+
   log.insertBefore(entry, log.firstChild);
-  while (log.children.length > 20) log.removeChild(log.lastChild);
+  while (log.children.length > 12) log.removeChild(log.lastChild);
 }
 
 
@@ -3790,9 +3839,16 @@ function openDet(id,live){
   if(isZero){
     el('det-body').innerHTML=
       buildAcc('det', 'live', 'Live class view', 'real-time color states',
-        '<div id="det-live-wrap" style="border-radius:10px;overflow:hidden;border:0.5px solid var(--border)">' +
+        '<div id="det-live-wrap" style="border-radius:10px;overflow:hidden;border:0.5px solid var(--border);position:relative">' +
           '<canvas id="det-live-canvas" style="width:100%;display:block" height="260"></canvas>' +
-          '<div id="det-live-log" style="max-height:70px;overflow-y:auto;display:none"></div>' +
+        '</div>' +
+        '<div id="det-live-ticker" style="margin-top:6px;height:26px;border-radius:7px;' +
+          'border:0.5px solid var(--border);background:var(--panel);' +
+          'display:flex;align-items:center;padding:0 10px;gap:8px;overflow:hidden">' +
+          '<span style="font-size:9px;font-weight:700;color:#BFA95F;text-transform:uppercase;' +
+            'letter-spacing:.08em;flex-shrink:0">Live</span>' +
+          '<div id="det-live-log" style="flex:1;overflow:hidden;white-space:nowrap;font-size:11px;' +
+            'color:var(--text3)">Waiting\u2026</div>' +
         '</div>',
         true
       )+
@@ -3840,9 +3896,16 @@ function openDet(id,live){
     '<div class="sec">Behavior types</div><div class="card">'+
     c.behaviors.map(function(b,i){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+displayBehavior(b.t)+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">'+b.n+'</span></div>'+pb((b.n/mxB)*100,BEHAVIOR_COLORS[i%BEHAVIOR_COLORS.length])+'</div>';}).join('')+'</div>'+
     buildAcc('det', 'live', 'Live class view', 'real-time color states',
-      '<div id="det-live-wrap" style="border-radius:10px;overflow:hidden;border:0.5px solid var(--border)">' +
+      '<div id="det-live-wrap" style="border-radius:10px;overflow:hidden;border:0.5px solid var(--border);position:relative">' +
         '<canvas id="det-live-canvas" style="width:100%;display:block" height="260"></canvas>' +
-        '<div id="det-live-log" style="max-height:70px;overflow-y:auto;display:none"></div>' +
+      '</div>' +
+      '<div id="det-live-ticker" style="margin-top:6px;height:26px;border-radius:7px;' +
+        'border:0.5px solid var(--border);background:var(--panel);' +
+        'display:flex;align-items:center;padding:0 10px;gap:8px;overflow:hidden">' +
+        '<span style="font-size:9px;font-weight:700;color:#BFA95F;text-transform:uppercase;' +
+          'letter-spacing:.08em;flex-shrink:0">Live</span>' +
+        '<div id="det-live-log" style="flex:1;overflow:hidden;white-space:nowrap;font-size:11px;' +
+          'color:var(--text3)">Waiting\u2026</div>' +
       '</div>',
       true
     )+
@@ -4103,6 +4166,11 @@ el('TN-log').addEventListener('click',function(){
 });
 var tnQc = el('TN-qc');
 if(tnQc) tnQc.addEventListener('click', goQuickColor);
+var btnQcBack = el('btn-qc-back');
+if (btnQcBack) btnQcBack.addEventListener('click', function() {
+  showPane('log');
+  showScreen('S-teacher', true);
+});
 el('TN-hist').addEventListener('click',function(){
   if (STATE.currentScreen !== 'S-teacher') {
     showScreen('S-teacher');
@@ -4378,7 +4446,6 @@ export {
   initLogin, fetchRole,
   authedFetch, authedInsert, authedSelect,
   fetchLiveData, buildLiveStats, fetchClassIncidents, fetchStudentIncidents, renderIncidentList,
-  sbInsert,
   drawLine, drawBar, wireChartTooltip, pb,
   wireHeatCard, buildAcc, handleAccClick,
   openEditSheet, closeEditSheet, populateEditSheet, openDelConfirm, closeDelConfirm,
