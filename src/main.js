@@ -206,7 +206,7 @@ function getSubmitterDisplay(email, subject){
   return '';
 }
 var SC={'PE':'#271A70','Technology':'#BFA95F','Art':'#98A2AD','Music':'#271A70','P.E.':'#271A70'};
-var NOTIF_SCHOOL_YEAR=import.meta.env.VITE_SCHOOL_YEAR||'2025-2026';
+var NOTIF_SCHOOL_YEAR=import.meta.env.VITE_SCHOOL_YEAR||'2025-26';
 var NOTIF_SCHOOL_ID=import.meta.env.VITE_SCHOOL_ID||'wayne-stem';
 
 
@@ -2860,16 +2860,38 @@ function exportCSV(){
 
 
 // ── FETCH INCIDENTS FOR A CLASSROOM ──
+var _homeroomAliasCache = null;
+
+function resolveHomeroom(incidentHomeroom, cb) {
+  if (_homeroomAliasCache) {
+    cb(_homeroomAliasCache[incidentHomeroom] || incidentHomeroom);
+    return;
+  }
+  authedFetch('/rest/v1/homeroom_aliases?select=incident_homeroom,student_homeroom')
+    .then(function(r) { return r.json(); })
+    .then(function(rows) {
+      _homeroomAliasCache = {};
+      (Array.isArray(rows) ? rows : []).forEach(function(row) {
+        _homeroomAliasCache[row.incident_homeroom] = row.student_homeroom;
+      });
+      cb(_homeroomAliasCache[incidentHomeroom] || incidentHomeroom);
+    })
+    .catch(function() {
+      cb(incidentHomeroom);
+    });
+}
+
 function fetchClassRoster(homeroom, cb){
-  var q='select=student_name,first_name,last_name&homeroom=eq.'+
-    encodeURIComponent(homeroom)+
-    '&active=eq.true'+
-    (ROSTER_SCHOOL_YEAR?'&school_year=eq.'+encodeURIComponent(ROSTER_SCHOOL_YEAR):'')+
-    '&order=last_name.asc,first_name.asc';
-  authedFetch('/rest/v1/students?'+q)
-    .then(function(r){return r.json();})
-    .then(function(rows){cb(null,Array.isArray(rows)?rows:[]);})
-    .catch(function(err){cb(err,[]);});
+  resolveHomeroom(homeroom, function(resolvedHomeroom) {
+    var q='select=student_name,first_name,last_name&homeroom=eq.'+
+      encodeURIComponent(resolvedHomeroom)+
+      '&active=eq.true&school_year=eq.'+encodeURIComponent(NOTIF_SCHOOL_YEAR)+
+      '&order=last_name.asc,first_name.asc';
+    authedFetch('/rest/v1/students?'+q)
+      .then(function(r){return r.json();})
+      .then(function(rows){cb(null,Array.isArray(rows)?rows:[]);})
+      .catch(function(err){cb(err,[]);});
+  });
 }
 
 function rosterRow(name, incCount, maxCount, hasInc){
