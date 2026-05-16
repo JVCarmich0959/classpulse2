@@ -1,4 +1,5 @@
-import { SB_URL, SB_KEY } from './config.js';
+import { SB_URL, SB_KEY, ROSTER_SCHOOL_YEAR } from './config.js';
+import { supabase } from './api/client.js';
 import { checkInviteToken } from './auth/session.js';
 import { openStudent, wireStudentLinks, stuNameLink } from './views/admin/student.js';
 
@@ -297,6 +298,20 @@ function emailToDisplayName(email){
 var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login',firstAidRows:[],firstAidLoaded:false,firstAidError:false,faFilterSpecials:'all',faFilterHome:'all',notifRows:[],notifLoaded:false,notifPollTimer:null};
 var STU_PREV_SCREEN='S-detail';
 var DET_PREV_SCREEN='S-classes';
+var DET_PHYSICS = {
+  Green:  {spd:0.30, maxSpd:0.55, r:11, wobble:0.018, fill:'#4ABFA3', glow:null,                    trailAlpha:0.10, trailLen:8,  bounceSpin:0.08},
+  Yellow: {spd:0.72, maxSpd:1.10, r:12, wobble:0.055, fill:'#E8C547', glow:null,                    trailAlpha:0.14, trailLen:10, bounceSpin:0.12},
+  Orange: {spd:1.35, maxSpd:2.00, r:13, wobble:0.110, fill:'#E87D2B', glow:'rgba(232,125,43,0.16)', trailAlpha:0.18, trailLen:12, bounceSpin:0.28},
+  Red:    {spd:2.10, maxSpd:3.20, r:14, wobble:0.200, fill:'#D63B3B', glow:'rgba(214,59,59,0.22)',  trailAlpha:0.22, trailLen:14, bounceSpin:0.45}
+};
+
+var DET_LIVE = {
+  dots:        [],
+  raf:         null,
+  channel:     null,
+  homeroom:    null,
+  running:     false
+};
 function setStuPrevScreen(v){ STU_PREV_SCREEN=v||'S-detail'; }
 function getStuPrevScreen(){ return STU_PREV_SCREEN||'S-detail'; }
 function setDetPrevScreen(v){ DET_PREV_SCREEN=v||'S-classes'; }
@@ -895,7 +910,9 @@ function bS4(){
 }
 
 function fetchScholarSuggestions(query, homeroom, cb){
-  var q='select=student_name,homeroom,grade&active=eq.true&school_year=eq.2025-26&student_name=ilike.*'+encodeURIComponent(query)+'*&order=homeroom.asc,student_name.asc&limit=50';
+  var q='select=student_name,homeroom,grade&active=eq.true'+
+    (ROSTER_SCHOOL_YEAR?'&school_year=eq.'+encodeURIComponent(ROSTER_SCHOOL_YEAR):'')+
+    '&student_name=ilike.*'+encodeURIComponent(query)+'*&order=homeroom.asc,student_name.asc&limit=50';
   authedFetch('/rest/v1/students?'+q).then(function(r){
     if(!r.ok) throw new Error('HTTP '+r.status);
     return r.json();
@@ -2846,7 +2863,9 @@ function exportCSV(){
 function fetchClassRoster(homeroom, cb){
   var q='select=student_name,first_name,last_name&homeroom=eq.'+
     encodeURIComponent(homeroom)+
-    '&active=eq.true&school_year=eq.2025-26&order=last_name.asc,first_name.asc';
+    '&active=eq.true'+
+    (ROSTER_SCHOOL_YEAR?'&school_year=eq.'+encodeURIComponent(ROSTER_SCHOOL_YEAR):'')+
+    '&order=last_name.asc,first_name.asc';
   authedFetch('/rest/v1/students?'+q)
     .then(function(r){return r.json();})
     .then(function(rows){cb(null,Array.isArray(rows)?rows:[]);})
@@ -2996,7 +3015,246 @@ function renderIncidentList(rows, container, onAfterEdit){
   });
 }
 
+function initLiveDots(homeroom, rosterRows) {
+  var cv = document.getElementById('det-live-canvas');
+  if (!cv) return;
+  var W = cv.offsetWidth || 320;
+  var H = 260;
+  var today = todayStr();
+  var rows = Array.isArray(rosterRows) ? rosterRows : [];
+
+  authedFetch('/rest/v1/color_transitions?homeroom=eq.' +
+    encodeURIComponent(homeroom) +
+    '&incident_date=eq.' + encodeURIComponent(today) +
+    '&select=student,to_color,created_at&order=created_at.asc')
+    .then(function(r) { return r.json(); })
+    .then(function(transitions) {
+      if (DET_LIVE.homeroom !== homeroom) return;
+      var colorMap = {};
+      (Array.isArray(transitions) ? transitions : []).forEach(function(t) {
+        if(t && t.student && DET_PHYSICS[t.to_color]) colorMap[t.student] = t.to_color;
+      });
+
+      var cols = Math.ceil(Math.sqrt((rows.length || 1) * 1.6));
+      var cellW = W / cols;
+      var cellH = H / Math.ceil((rows.length || 1) / cols);
+
+      DET_LIVE.dots = rows.map(function(s, i) {
+        var studentName = s.student_name || '';
+        var col = i % cols;
+        var row = Math.floor(i / cols);
+        var cx  = cellW * col + cellW / 2 + (Math.random() - .5) * cellW * .5;
+        var cy  = cellH * row + cellH / 2 + (Math.random() - .5) * cellH * .5;
+        var color = colorMap[studentName] || 'Green';
+        var ph = DET_PHYSICS[color] || DET_PHYSICS.Green;
+        var angle = Math.random() * Math.PI * 2;
+        return {
+          name:   studentName,
+          first:  (studentName.split(' ')[0] || 'Scholar'),
+          color:  DET_PHYSICS[color] ? color : 'Green',
+          x:      Math.max(16, Math.min(W - 16, cx)),
+          y:      Math.max(16, Math.min(H - 16, cy)),
+          vx:     Math.cos(angle) * ph.spd,
+          vy:     Math.sin(angle) * ph.spd,
+          pulse:  0,
+          trail:  []
+        };
+      });
+
+      DET_LIVE.running = true;
+      if (!DET_LIVE.raf) DET_LIVE.raf = requestAnimationFrame(tickLive);
+    })
+    .catch(function(err) { console.warn('initLiveDots failed', err); });
+}
+
+function tickLive() {
+  if (!DET_LIVE.running) { DET_LIVE.raf = null; return; }
+  var cv = document.getElementById('det-live-canvas');
+  if (!cv) { DET_LIVE.raf = null; DET_LIVE.running = false; return; }
+
+  var dpr = window.devicePixelRatio || 1;
+  var W = cv.offsetWidth || 320;
+  var H = 260;
+  cv.width  = W * dpr;
+  cv.height = H * dpr;
+  cv.style.height = H + 'px';
+  var ctx = cv.getContext('2d');
+  if(!ctx){ DET_LIVE.raf = requestAnimationFrame(tickLive); return; }
+  ctx.scale(dpr, dpr);
+
+  var isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.fillStyle = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)';
+  for (var gx = 20; gx < W; gx += 36) {
+    for (var gy = 20; gy < H; gy += 36) {
+      ctx.beginPath(); ctx.arc(gx, gy, 1, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  var counts = { Green: 0, Yellow: 0, Orange: 0, Red: 0 };
+
+  DET_LIVE.dots.forEach(function(d) {
+    var ph = DET_PHYSICS[d.color] || DET_PHYSICS.Green;
+
+    var curSpd = Math.sqrt(d.vx * d.vx + d.vy * d.vy) || 0.01;
+    var newSpd = curSpd + (ph.spd - curSpd) * 0.04;
+    d.vx = (d.vx / curSpd) * newSpd;
+    d.vy = (d.vy / curSpd) * newSpd;
+
+    d.vx += (Math.random() - .5) * ph.wobble;
+    d.vy += (Math.random() - .5) * ph.wobble;
+
+    var spd2 = Math.sqrt(d.vx * d.vx + d.vy * d.vy) || .01;
+    if (spd2 > ph.maxSpd) { d.vx = d.vx / spd2 * ph.maxSpd; d.vy = d.vy / spd2 * ph.maxSpd; }
+
+    d.x += d.vx; d.y += d.vy;
+
+    var r = ph.r;
+    if (d.x < r)     { d.x = r;     d.vx =  Math.abs(d.vx); d.vy += (Math.random() - .5) * ph.bounceSpin; }
+    if (d.x > W - r) { d.x = W - r; d.vx = -Math.abs(d.vx); d.vy += (Math.random() - .5) * ph.bounceSpin; }
+    if (d.y < r)     { d.y = r;     d.vy =  Math.abs(d.vy); d.vx += (Math.random() - .5) * ph.bounceSpin; }
+    if (d.y > H - r) { d.y = H - r; d.vy = -Math.abs(d.vy); d.vx += (Math.random() - .5) * ph.bounceSpin; }
+
+    d.trail.push({ x: d.x, y: d.y });
+    if (d.trail.length > ph.trailLen) d.trail.shift();
+
+    if (d.trail.length > 2) {
+      for (var ti = 1; ti < d.trail.length; ti++) {
+        var tf = ti / d.trail.length;
+        var alpha = Math.round(tf * ph.trailAlpha * 255).toString(16).padStart(2, '0');
+        ctx.beginPath();
+        ctx.moveTo(d.trail[ti - 1].x, d.trail[ti - 1].y);
+        ctx.lineTo(d.trail[ti].x, d.trail[ti].y);
+        ctx.strokeStyle = ph.fill + alpha;
+        ctx.lineWidth = r * tf * 1.5;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+    }
+
+    if (d.pulse > 0) {
+      var pr = r + (1 - d.pulse) * 20;
+      var palpha = Math.round(d.pulse * 160).toString(16).padStart(2, '0');
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, pr, 0, Math.PI * 2);
+      ctx.strokeStyle = ph.fill + palpha;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      d.pulse = Math.max(0, d.pulse - 0.035);
+    }
+
+    if (ph.glow) {
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, r + 5, 0, Math.PI * 2);
+      ctx.fillStyle = ph.glow;
+      ctx.fill();
+    }
+
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = ph.fill;
+    ctx.fill();
+
+    if (d.color === 'Green' || d.color === 'Yellow') {
+      ctx.beginPath();
+      ctx.arc(d.x - r * .3, d.y - r * .3, r * .46, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.26)';
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(d.x - r * .22, d.y - r * .22, r * .2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.38)';
+      ctx.fill();
+    }
+
+    ctx.font = '500 9px Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isDark ? 'rgba(255,255,255,0.78)' : 'rgba(20,16,64,0.72)';
+    ctx.fillText(d.first, d.x, d.y + r + 11);
+
+    counts[d.color] = (counts[d.color] || 0) + 1;
+  });
+
+  DET_LIVE.raf = requestAnimationFrame(tickLive);
+}
+
+function startLiveColorChannel(homeroom) {
+  if (typeof supabase.setAuthToken === 'function') supabase.setAuthToken(SESSION.token);
+  if (DET_LIVE.channel) {
+    try { supabase.removeChannel(DET_LIVE.channel); } catch (e) {}
+    DET_LIVE.channel = null;
+  }
+
+  var channel = supabase
+    .channel('color-transitions-' + homeroom)
+    .on(
+      'postgres_changes',
+      {
+        event:  'INSERT',
+        schema: 'public',
+        table:  'color_transitions',
+        filter: 'homeroom=eq.' + homeroom
+      },
+      function(payload) {
+        var rec = payload.new;
+        if (!rec || !rec.student || !rec.to_color || !DET_PHYSICS[rec.to_color]) return;
+
+        var dot = null;
+        for (var i = 0; i < DET_LIVE.dots.length; i++) {
+          if (DET_LIVE.dots[i].name === rec.student) { dot = DET_LIVE.dots[i]; break; }
+        }
+        if (!dot) return;
+
+        var prev = dot.color;
+        dot.color = rec.to_color;
+        dot.pulse = 1;
+
+        addLiveLog(rec.student, prev, rec.to_color);
+
+        var first = rec.student.split(' ')[0];
+        showToast(first + ' \u2192 ' + rec.to_color,
+          rec.to_color === 'Red' ? 'error' : rec.to_color === 'Green' ? 'success' : 'info',
+          3000);
+      }
+    )
+    .subscribe();
+
+  DET_LIVE.channel = channel;
+}
+
+function stopLiveColorChannel() {
+  if (DET_LIVE.channel) {
+    try { supabase.removeChannel(DET_LIVE.channel); } catch (e) {}
+    DET_LIVE.channel = null;
+  }
+  DET_LIVE.running = false;
+  if (DET_LIVE.raf) { cancelAnimationFrame(DET_LIVE.raf); DET_LIVE.raf = null; }
+  DET_LIVE.dots = [];
+  DET_LIVE.homeroom = null;
+}
+
+function addLiveLog(student, from, to) {
+  var log = document.getElementById('det-live-log');
+  if (!log) return;
+  log.style.display = 'block';
+  var now = new Date();
+  var time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  var fill = DET_PHYSICS[to] ? DET_PHYSICS[to].fill : '#98A2AD';
+  var entry = document.createElement('div');
+  entry.style.cssText = 'display:flex;gap:8px;padding:4px 12px;border-bottom:0.5px solid var(--border);font-size:11px;align-items:center';
+  entry.innerHTML =
+    '<span style="color:var(--text3);flex-shrink:0;font-variant-numeric:tabular-nums">' + escHtml(time) + '</span>' +
+    '<span style="font-weight:600;color:var(--text)">' + escHtml(student.split(' ')[0]) + '</span>' +
+    '<span style="color:var(--text3)">\u2192</span>' +
+    '<span style="color:' + fill + ';font-weight:600">' + escHtml(to) + '</span>';
+  log.insertBefore(entry, log.firstChild);
+  while (log.children.length > 20) log.removeChild(log.lastChild);
+}
+
+
 function openDet(id,live){
+  stopLiveColorChannel();
   var LD=live||{};
   var c=LD.classrooms&&LD.classrooms[id];
   var isZero=!c||c.total===0;
@@ -3007,11 +3265,26 @@ function openDet(id,live){
 
   if(isZero){
     el('det-body').innerHTML=
+      buildAcc('det', 'live', 'Live class view', 'real-time color states',
+        '<div id="det-live-wrap" style="border-radius:10px;overflow:hidden;border:0.5px solid var(--border)">' +
+          '<canvas id="det-live-canvas" style="width:100%;display:block" height="260"></canvas>' +
+          '<div id="det-live-log" style="max-height:70px;overflow-y:auto;display:none"></div>' +
+        '</div>',
+        true
+      )+
       '<div class="card">' + emptyState('No incidents for this class', 'Incidents will appear as teachers log them.') + '</div>'+
       '<div style="height:16px"></div>';
     wireStudentLinks(el('det-body'),'S-detail');
-  animateListIn(el('det-body'));
-  showScreen('S-detail');
+    animateListIn(el('det-body'));
+    showScreen('S-detail');
+    setTimeout(function(){
+      fetchClassRoster(id,function(err,rosterRows){
+        if(err) return;
+        DET_LIVE.homeroom = id;
+        initLiveDots(id, rosterRows);
+        startLiveColorChannel(id);
+      });
+    },60);
     return;
   }
 
@@ -3041,6 +3314,13 @@ function openDet(id,live){
     '<div class="kpi"><div class="lbl">Subjects logged</div><div class="val">'+Object.keys(c.specials).filter(function(k){return c.specials[k]>0;}).length+'</div></div></div>'+
     '<div class="sec">Behavior types</div><div class="card">'+
     c.behaviors.map(function(b,i){return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>'+displayBehavior(b.t)+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">'+b.n+'</span></div>'+pb((b.n/mxB)*100,BEHAVIOR_COLORS[i%BEHAVIOR_COLORS.length])+'</div>';}).join('')+'</div>'+
+    buildAcc('det', 'live', 'Live class view', 'real-time color states',
+      '<div id="det-live-wrap" style="border-radius:10px;overflow:hidden;border:0.5px solid var(--border)">' +
+        '<canvas id="det-live-canvas" style="width:100%;display:block" height="260"></canvas>' +
+        '<div id="det-live-log" style="max-height:70px;overflow-y:auto;display:none"></div>' +
+      '</div>',
+      true
+    )+
     buildAcc('det','roster','Class roster','Loading...','<div id="det-roster-wrap">'+skeletonRows(8)+'</div>',true)+
     '<div class="sec">By subject</div><div class="card">'+
     Object.keys(c.specials).map(function(s,i){var n=c.specials[s],col=subjectBarColor(i);return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+col+'">'+s+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">'+n+'</span></div>'+pb((n/mxSP)*100,col)+'</div>';}).join('')+'</div>'+
@@ -3107,6 +3387,9 @@ function openDet(id,live){
       }
       wireStudentLinks(wrap,'S-detail');
       animateListIn(wrap);
+      DET_LIVE.homeroom = id;
+      initLiveDots(id, rosterRows);
+      startLiveColorChannel(id);
     });
     // fetch and render individual incidents
     fetchClassIncidents(id, function(err, rows){
@@ -3308,6 +3591,7 @@ el('AN-classes').addEventListener('click',function(){ if(SESSION.role!=='admin')
 el('AN-log').addEventListener('click',goTeacher);
 el('btn-cls-back').addEventListener('click',function(){showScreen('S-admin',true);});
 el('btn-det-back').addEventListener('click',function(){
+  stopLiveColorChannel();
   if(DET_PREV_SCREEN==='S-teacher'){
     showScreen('S-teacher',true);
     showPane('hist');
