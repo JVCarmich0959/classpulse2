@@ -313,27 +313,25 @@ var DET_LIVE = {
   running:     false
 };
 
-// ── SCHOOL-WIDE PHYSICS WIDGET ──
+// ── SCHOOL-WIDE PHYSICS ──
 var SW_PHYSICS = {
-  Green:  {spd:0.20,maxSpd:0.38,r:5,  wobble:0.010,fill:'#4ABFA3',glow:null,               trailA:0.08,trailL:6, bSpin:0.05},
-  Yellow: {spd:0.52,maxSpd:0.85,r:5,  wobble:0.038,fill:'#E8C547',glow:null,               trailA:0.12,trailL:9, bSpin:0.10},
-  Orange: {spd:1.05,maxSpd:1.65,r:6,  wobble:0.085,fill:'#E87D2B',glow:'rgba(232,125,43,0.13)',trailA:0.15,trailL:12,bSpin:0.24},
-  Red:    {spd:1.75,maxSpd:2.70,r:6,  wobble:0.165,fill:'#D63B3B',glow:'rgba(214,59,59,0.18)',trailA:0.19,trailL:15,bSpin:0.40}
+  Green:  {spd:0.22,maxSpd:0.40,wobble:0.010,fill:'#4ABFA3',glow:null,               trailA:0.08,trailL:5, bSpin:0.05},
+  Yellow: {spd:0.58,maxSpd:0.92,wobble:0.042,fill:'#E8C547',glow:null,               trailA:0.13,trailL:8, bSpin:0.10},
+  Orange: {spd:1.12,maxSpd:1.80,wobble:0.092,fill:'#E87D2B',glow:'rgba(232,125,43,0.13)',trailA:0.16,trailL:11,bSpin:0.26},
+  Red:    {spd:1.85,maxSpd:2.95,wobble:0.180,fill:'#D63B3B',glow:'rgba(214,59,59,0.20)',trailA:0.21,trailL:14,bSpin:0.44}
 };
 
-var SW_GRADE_RING = {
-  K:'#8B7BE0','1':'#4ABFA3','2':'#E8C547','3':'#E87D2B','4':'#D63B3B','5':'#BFA95F'
-};
+var SW_GRADE_RING = {K:'#8B7BE0','1':'#4ABFA3','2':'#E8C547','3':'#E87D2B','4':'#D63B3B','5':'#BFA95F'};
+var SW_GRADE_R    = {K:4,'1':4.5,'2':5,'3':5.5,'4':6,'5':6.5};
 
 var SW_STATE = {
-  allDots:      [],
-  visibleDots:  [],
-  activeGrade:  'all',
-  raf:          null,
-  channel:      null,
-  running:      false,
-  loading:      false,
-  tickLog:      []
+  allDots:     [],
+  visibleDots: [],
+  activeGrade: 'all',
+  raf:         null,
+  channel:     null,
+  running:     false,
+  tickLog:     []
 };
 function setStuPrevScreen(v){ STU_PREV_SCREEN=v||'S-detail'; }
 function getStuPrevScreen(){ return STU_PREV_SCREEN||'S-detail'; }
@@ -379,94 +377,75 @@ function handleAccClick(tab,id){
 if(typeof window!=='undefined') window.handleAccClick=handleAccClick;
 
 function initSchoolWide() {
-  if (SW_STATE.running || SW_STATE.loading) return;
+  if (SW_STATE.running) return;
   var cv = document.getElementById('sw-canvas');
   if (!cv) return;
-
-  SW_STATE.loading = true;
-
   var W = cv.offsetWidth || 340;
   var H = 320;
   var today = todayStr();
 
-  authedFetch('/rest/v1/students?active=eq.true&select=student_name,homeroom,grade_code' +
+  authedFetch('/rest/v1/students?active=eq.true' +
     '&grade_code=not.in.(EC)' +
     '&school_year=eq.' + encodeURIComponent(NOTIF_SCHOOL_YEAR) +
+    '&select=student_name,homeroom,grade_code' +
     '&order=grade_code.asc,last_name.asc,first_name.asc')
-    .then(function(r) { return r.json(); })
-    .then(function(students) {
+    .then(function(r){ return r.json(); })
+    .then(function(students){
       students = Array.isArray(students) ? students : [];
-
-      return authedFetch('/rest/v1/color_transitions?incident_date=eq.' + encodeURIComponent(today) +
+      authedFetch('/rest/v1/color_transitions?incident_date=eq.' + encodeURIComponent(today) +
         '&select=student,to_color,created_at&order=created_at.asc')
-        .then(function(r) { return r.json(); })
-        .then(function(transitions) {
+        .then(function(r){ return r.json(); })
+        .then(function(transitions){
           var colorMap = {};
-          (Array.isArray(transitions) ? transitions : []).forEach(function(t) {
-            if (t && t.student && SW_PHYSICS[t.to_color]) colorMap[t.student] = t.to_color;
+          (Array.isArray(transitions)?transitions:[]).forEach(function(t){
+            if(t && t.student && SW_PHYSICS[t.to_color]) colorMap[t.student] = t.to_color;
           });
-
-          var cols = Math.max(1, Math.ceil(Math.sqrt(students.length * 1.5)));
-          var rows = Math.max(1, Math.ceil(students.length / cols));
-          var cellW = W / cols;
-          var cellH = H / rows;
-
-          SW_STATE.allDots = students.map(function(s, i) {
-            var col = i % cols, row = Math.floor(i / cols);
-            var cx = cellW * col + cellW / 2 + (Math.random() - .5) * cellW * .45;
-            var cy = cellH * row + cellH / 2 + (Math.random() - .5) * cellH * .45;
+          SW_STATE.allDots = students.map(function(s){
             var color = colorMap[s.student_name] || 'Green';
-            var ph = SW_PHYSICS[color] || SW_PHYSICS.Green;
-            var angle = Math.random() * Math.PI * 2;
+            var r = SW_GRADE_R[s.grade_code] || 5;
+            var ph = SW_PHYSICS[color];
+            var angle = Math.random()*Math.PI*2;
             return {
-              name:     s.student_name,
-              first:    (s.student_name || '').split(' ')[0],
-              homeroom: s.homeroom || '',
-              grade:    s.grade_code || '',
-              color:    color,
-              x: Math.max(8, Math.min(W - 8, cx)),
-              y: Math.max(8, Math.min(H - 8, cy)),
-              vx: Math.cos(angle) * ph.spd,
-              vy: Math.sin(angle) * ph.spd,
+              name:  s.student_name,
+              first: (s.student_name||'').split(' ')[0],
+              grade: s.grade_code || '',
+              color: color,
+              x: r+4+Math.random()*(W-r*2-8),
+              y: r+4+Math.random()*(H-r*2-8),
+              vx: Math.cos(angle)*ph.spd*(0.5+Math.random()*0.8),
+              vy: Math.sin(angle)*ph.spd*(0.5+Math.random()*0.8),
+              r:   r,
               pulse: 0,
               trail: []
             };
           });
-
-          if (STATE.currentScreen !== 'S-admin' || STATE.adminTab !== 'overview' || !document.getElementById('sw-canvas')) {
-            SW_STATE.loading = false;
-            return;
-          }
           swSetFilter(SW_STATE.activeGrade);
-          SW_STATE.loading = false;
           SW_STATE.running = true;
           if (!SW_STATE.raf) SW_STATE.raf = requestAnimationFrame(tickSchoolWide);
           startSchoolWideChannel();
         });
     })
-    .catch(function(err) { SW_STATE.loading = false; console.warn('initSchoolWide failed', err); });
+    .catch(function(err){ console.warn('initSchoolWide failed', err); });
 }
 
 function swSetFilter(grade) {
   SW_STATE.activeGrade = grade;
   SW_STATE.visibleDots = grade === 'all'
     ? SW_STATE.allDots
-    : SW_STATE.allDots.filter(function(d) { return d.grade === grade; });
-
-  document.querySelectorAll('.sw-grade-btn').forEach(function(btn) {
-    btn.classList.toggle('on', btn.dataset.grade === grade);
+    : SW_STATE.allDots.filter(function(d){ return d.grade === grade; });
+  document.querySelectorAll('.sw-fb').forEach(function(b){
+    b.classList.toggle('on', b.dataset.g === grade);
   });
-
-  var countEl = document.getElementById('sw-shown-count');
-  if (countEl) countEl.textContent = SW_STATE.visibleDots.length;
+  var ct = document.getElementById('sw-count');
+  if (ct) ct.textContent = SW_STATE.visibleDots.length;
 }
+if(typeof window!=='undefined') window.swSetFilter=swSetFilter;
 
 function stopSchoolWide() {
   SW_STATE.running = false;
-  SW_STATE.loading = false;
-  if (SW_STATE.raf) { cancelAnimationFrame(SW_STATE.raf); SW_STATE.raf = null; }
-  if (SW_STATE.channel) {
-    try { supabase.removeChannel(SW_STATE.channel); } catch(e) {}
+  if (SW_STATE.raf){ cancelAnimationFrame(SW_STATE.raf); SW_STATE.raf = null; }
+  if (SW_STATE.channel){
+    try { supabase.removeChannel(SW_STATE.channel); } catch(e){}
     SW_STATE.channel = null;
   }
   SW_STATE.allDots = [];
@@ -476,141 +455,227 @@ function stopSchoolWide() {
 
 function startSchoolWideChannel() {
   if (SW_STATE.channel) return;
-  if (typeof supabase.setAuthToken === 'function') supabase.setAuthToken(SESSION.token);
   SW_STATE.channel = supabase
     .channel('sw-color-transitions')
-    .on('postgres_changes', {
-      event: 'INSERT', schema: 'public', table: 'color_transitions'
-    }, function(payload) {
-      var rec = payload.new;
-      if (!rec || !rec.student || !rec.to_color || !SW_PHYSICS[rec.to_color]) return;
-      var dot = null;
-      for (var i = 0; i < SW_STATE.allDots.length; i++) {
-        if (SW_STATE.allDots[i].name === rec.student) { dot = SW_STATE.allDots[i]; break; }
-      }
-      if (!dot) return;
-      dot.color = rec.to_color;
-      dot.pulse = 1;
-      dot.trail = [];
-      swPushTick(dot.first, dot.homeroom, rec.to_color);
-    })
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'color_transitions'},
+      function(payload){
+        var rec = payload.new;
+        if (!rec || !rec.student || !rec.to_color || !SW_PHYSICS[rec.to_color]) return;
+        var dot = null;
+        for (var i=0;i<SW_STATE.allDots.length;i++){
+          if (SW_STATE.allDots[i].name === rec.student){ dot=SW_STATE.allDots[i]; break; }
+        }
+        if (!dot) return;
+        dot.color  = rec.to_color;
+        dot.pulse  = 1;
+        dot.trail  = [];
+        swPushTick(dot.first, dot.grade, rec.to_color);
+      })
     .subscribe();
 }
 
-function swPushTick(first, homeroom, to) {
-  var teacher = (homeroom || '').split('-').slice(1).join('-') || homeroom;
+function swPushTick(first, grade, to) {
   var fill = SW_PHYSICS[to] ? SW_PHYSICS[to].fill : '#98A2AD';
-  SW_STATE.tickLog.unshift({ first: first, teacher: teacher, to: to, fill: fill });
-  if (SW_STATE.tickLog.length > 10) SW_STATE.tickLog.pop();
-  var ticker = document.getElementById('sw-ticker-inner');
-  if (!ticker) return;
-  ticker.innerHTML = SW_STATE.tickLog.map(function(t) {
-    return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px">' +
-      '<span style="font-weight:600;color:' + t.fill + '">' + escHtml(t.first) + '</span>' +
-      '<span style="color:var(--text3);font-size:10px">' + escHtml(t.teacher) + '</span>' +
-      '<span style="color:' + t.fill + ';font-weight:600">\u2192 ' + escHtml(t.to) + '</span>' +
-      '</span>' +
-      '<span style="color:var(--border);font-size:10px">\u00B7</span>';
+  SW_STATE.tickLog.unshift({first:first, grade:grade, to:to, fill:fill});
+  if (SW_STATE.tickLog.length > 8) SW_STATE.tickLog.pop();
+  var el = document.getElementById('sw-ticker');
+  if (!el) return;
+  el.innerHTML = SW_STATE.tickLog.map(function(t){
+    return '<span style="color:'+t.fill+';font-weight:600">'+escHtml(t.first)+'</span>'+
+      '<span style="color:var(--text3);font-size:10px;margin:0 4px">'+escHtml(t.grade)+'</span>'+
+      '<span style="color:'+t.fill+'">\u2192'+escHtml(t.to)+'</span>'+
+      '<span style="color:var(--border);margin:0 8px">\u00B7</span>';
   }).join('');
 }
 
 function tickSchoolWide() {
-  if (!SW_STATE.running) { SW_STATE.raf = null; return; }
+  if (!SW_STATE.running){ SW_STATE.raf=null; return; }
   var cv = document.getElementById('sw-canvas');
-  if (!cv) { SW_STATE.raf = null; SW_STATE.running = false; return; }
+  if (!cv){ SW_STATE.raf=null; SW_STATE.running=false; return; }
 
-  var dpr = window.devicePixelRatio || 1;
-  var W = cv.offsetWidth || 340;
-  var H = 320;
-  cv.width = W * dpr; cv.height = H * dpr;
-  cv.style.height = H + 'px';
+  var dpr = window.devicePixelRatio||1;
+  var W = cv.offsetWidth||340, H = 320;
+  cv.width=W*dpr; cv.height=H*dpr; cv.style.height=H+'px';
   var ctx = cv.getContext('2d');
-  ctx.scale(dpr, dpr);
+  ctx.scale(dpr,dpr);
 
-  ctx.fillStyle = '#0f0e1a';
-  ctx.fillRect(0, 0, W, H);
+  // Temperature-based background -- warms subtly as school heats up
+  var total = SW_STATE.allDots.length||1;
+  var hot  = SW_STATE.allDots.filter(function(d){return d.color==='Red';}).length;
+  var warm = SW_STATE.allDots.filter(function(d){return d.color==='Orange';}).length;
+  var mild = SW_STATE.allDots.filter(function(d){return d.color==='Yellow';}).length;
+  var heat = Math.min(1,(hot*3+warm*1.5+mild*0.5)/total/0.6);
+  var br=Math.round(15+heat*8), bg=Math.round(14-heat*5), bb=Math.round(26-heat*16);
+  ctx.fillStyle='rgb('+br+','+bg+','+bb+')';
+  ctx.fillRect(0,0,W,H);
 
-  ctx.fillStyle = 'rgba(255,255,255,0.022)';
-  for (var gx = 28; gx < W; gx += 40) {
-    for (var gy = 28; gy < H; gy += 40) {
-      ctx.beginPath(); ctx.arc(gx, gy, 1, 0, Math.PI * 2); ctx.fill();
+  // Dot grid texture
+  ctx.fillStyle='rgba(255,255,255,0.020)';
+  for(var gx=30;gx<W;gx+=42) for(var gy=30;gy<H;gy+=42){
+    ctx.beginPath();ctx.arc(gx,gy,1,0,Math.PI*2);ctx.fill();
+  }
+
+  // Update temperature bar
+  var tf = document.getElementById('sw-temp-fill');
+  if(tf){
+    tf.style.width=Math.round(heat*100)+'%';
+    tf.style.background=heat<0.3?'#4ABFA3':heat<0.6?'#E8C547':heat<0.85?'#E87D2B':'#D63B3B';
+  }
+  var tl = document.getElementById('sw-temp-lbl');
+  if(tl) tl.textContent=heat<0.15?'Calm':heat<0.4?'Some unrest':heat<0.7?'Elevated':'High alert';
+
+  var counts={Green:0,Yellow:0,Orange:0,Red:0};
+  var visSet = new Set(SW_STATE.visibleDots);
+
+  // Physics -- runs on ALL dots so state stays consistent when switching grade filter
+  SW_STATE.allDots.forEach(function(d){
+    var ph=SW_PHYSICS[d.color];
+    var r=d.r;
+    var cs=Math.sqrt(d.vx*d.vx+d.vy*d.vy)||.01;
+    var ns=cs+(ph.spd-cs)*0.032;
+    d.vx=(d.vx/cs)*ns; d.vy=(d.vy/cs)*ns;
+    d.vx+=(Math.random()-.5)*ph.wobble;
+    d.vy+=(Math.random()-.5)*ph.wobble;
+    var s2=Math.sqrt(d.vx*d.vx+d.vy*d.vy)||.01;
+    if(s2>ph.maxSpd){d.vx=d.vx/s2*ph.maxSpd;d.vy=d.vy/s2*ph.maxSpd;}
+    d.x+=d.vx; d.y+=d.vy;
+    if(d.x<r){d.x=r;d.vx=Math.abs(d.vx);d.vy+=(Math.random()-.5)*ph.bSpin;}
+    if(d.x>W-r){d.x=W-r;d.vx=-Math.abs(d.vx);d.vy+=(Math.random()-.5)*ph.bSpin;}
+    if(d.y<r){d.y=r;d.vy=Math.abs(d.vy);d.vx+=(Math.random()-.5)*ph.bSpin;}
+    if(d.y>H-r){d.y=H-r;d.vy=-Math.abs(d.vy);d.vx+=(Math.random()-.5)*ph.bSpin;}
+    d.trail.push({x:d.x,y:d.y});
+    if(d.trail.length>ph.trailL)d.trail.shift();
+  });
+
+  // Elastic collision -- visible dots only for performance
+  var vd = SW_STATE.visibleDots;
+  for(var i=0;i<vd.length;i++){
+    for(var j=i+1;j<vd.length;j++){
+      var a=vd[i],b=vd[j];
+      var dx=b.x-a.x,dy=b.y-a.y;
+      var dist=Math.sqrt(dx*dx+dy*dy);
+      var minD=a.r+b.r+0.5;
+      if(dist<minD&&dist>0.01){
+        var overlap=(minD-dist)/2;
+        var nx=dx/dist,ny=dy/dist;
+        a.x-=nx*overlap;a.y-=ny*overlap;
+        b.x+=nx*overlap;b.y+=ny*overlap;
+        var dvx=a.vx-b.vx,dvy=a.vy-b.vy;
+        var dot2=dvx*nx+dvy*ny;
+        if(dot2>0){a.vx-=dot2*nx;a.vy-=dot2*ny;b.vx+=dot2*nx;b.vy+=dot2*ny;}
+      }
     }
   }
 
-  var counts = { Green: 0, Yellow: 0, Orange: 0, Red: 0 };
-  var visSet = new Set(SW_STATE.visibleDots);
+  // Render
+  SW_STATE.allDots.forEach(function(d){
+    var ph=SW_PHYSICS[d.color];
+    var r=d.r;
+    var vis=visSet.has(d);
 
-  SW_STATE.allDots.forEach(function(d) {
-    var ph = SW_PHYSICS[d.color] || SW_PHYSICS.Green;
-    var cs = Math.sqrt(d.vx * d.vx + d.vy * d.vy) || .01;
-    var ns = cs + (ph.spd - cs) * 0.03;
-    d.vx = (d.vx / cs) * ns; d.vy = (d.vy / cs) * ns;
-    d.vx += (Math.random() - .5) * ph.wobble;
-    d.vy += (Math.random() - .5) * ph.wobble;
-    var s2 = Math.sqrt(d.vx * d.vx + d.vy * d.vy) || .01;
-    if (s2 > ph.maxSpd) { d.vx = d.vx / s2 * ph.maxSpd; d.vy = d.vy / s2 * ph.maxSpd; }
-    d.x += d.vx; d.y += d.vy;
-    var r = ph.r;
-    if (d.x < r)     { d.x = r;     d.vx =  Math.abs(d.vx); d.vy += (Math.random() - .5) * ph.bSpin; }
-    if (d.x > W - r) { d.x = W - r; d.vx = -Math.abs(d.vx); d.vy += (Math.random() - .5) * ph.bSpin; }
-    if (d.y < r)     { d.y = r;     d.vy =  Math.abs(d.vy); d.vx += (Math.random() - .5) * ph.bSpin; }
-    if (d.y > H - r) { d.y = H - r; d.vy = -Math.abs(d.vy); d.vx += (Math.random() - .5) * ph.bSpin; }
-    d.trail.push({ x: d.x, y: d.y });
-    if (d.trail.length > ph.trailL) d.trail.shift();
-
-    if (!visSet.has(d)) {
-      ctx.beginPath(); ctx.arc(d.x, d.y, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fill();
+    if(!vis){
+      // Dim ghost -- spatial presence but not the focus
+      ctx.globalAlpha=0.10;
+      ctx.beginPath();ctx.arc(d.x,d.y,r*.6,0,Math.PI*2);
+      ctx.fillStyle=ph.fill;ctx.fill();
+      ctx.globalAlpha=1;
       return;
     }
 
-    var r2 = ph.r;
-    if (d.trail.length > 2) {
-      for (var ti = 1; ti < d.trail.length; ti++) {
-        var tf = ti / d.trail.length;
-        var talpha = Math.round(tf * ph.trailA * 255).toString(16).padStart(2, '0');
+    // Trail
+    if(d.trail.length>2){
+      for(var ti=1;ti<d.trail.length;ti++){
+        var tf2=ti/d.trail.length;
+        var ta=Math.round(tf2*ph.trailA*255).toString(16).padStart(2,'0');
         ctx.beginPath();
-        ctx.moveTo(d.trail[ti - 1].x, d.trail[ti - 1].y);
-        ctx.lineTo(d.trail[ti].x, d.trail[ti].y);
-        ctx.strokeStyle = ph.fill + talpha;
-        ctx.lineWidth = r2 * tf * 1.5;
-        ctx.lineCap = 'round'; ctx.stroke();
+        ctx.moveTo(d.trail[ti-1].x,d.trail[ti-1].y);
+        ctx.lineTo(d.trail[ti].x,d.trail[ti].y);
+        ctx.strokeStyle=ph.fill+ta;
+        ctx.lineWidth=r*tf2*1.5;
+        ctx.lineCap='round';ctx.stroke();
       }
     }
-    if (d.pulse > 0) {
-      var pr = r2 + (1 - d.pulse) * 14;
-      var pa = Math.round(d.pulse * 130).toString(16).padStart(2, '0');
-      ctx.beginPath(); ctx.arc(d.x, d.y, pr, 0, Math.PI * 2);
-      ctx.strokeStyle = ph.fill + pa; ctx.lineWidth = 1.5; ctx.stroke();
-      d.pulse = Math.max(0, d.pulse - 0.035);
+    // Pulse on transition
+    if(d.pulse>0){
+      var pr=r+(1-d.pulse)*16;
+      var pa=Math.round(d.pulse*128).toString(16).padStart(2,'0');
+      ctx.beginPath();ctx.arc(d.x,d.y,pr,0,Math.PI*2);
+      ctx.strokeStyle=ph.fill+pa;ctx.lineWidth=1.5;ctx.stroke();
+      d.pulse=Math.max(0,d.pulse-.032);
     }
-    if (ph.glow) {
-      ctx.beginPath(); ctx.arc(d.x, d.y, r2 + 4, 0, Math.PI * 2);
-      ctx.fillStyle = ph.glow; ctx.fill();
+    // Glow for hot colors
+    if(ph.glow){
+      ctx.beginPath();ctx.arc(d.x,d.y,r+5,0,Math.PI*2);
+      ctx.fillStyle=ph.glow;ctx.fill();
     }
-    var ringColor = SW_GRADE_RING[d.grade] || '#ffffff';
-    ctx.beginPath(); ctx.arc(d.x, d.y, r2 + 1.5, 0, Math.PI * 2);
-    ctx.strokeStyle = ringColor + '55'; ctx.lineWidth = 1.2; ctx.stroke();
-    ctx.beginPath(); ctx.arc(d.x, d.y, r2, 0, Math.PI * 2);
-    ctx.fillStyle = ph.fill; ctx.fill();
-    if (d.color === 'Green' || d.color === 'Yellow') {
-      ctx.beginPath(); ctx.arc(d.x - r2 * .28, d.y - r2 * .28, r2 * .44, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.20)'; ctx.fill();
+    // Grade ring -- identifies grade at a glance
+    var ring=SW_GRADE_RING[d.grade]||'#ffffff';
+    ctx.beginPath();ctx.arc(d.x,d.y,r+1.8,0,Math.PI*2);
+    ctx.strokeStyle=ring+'60';ctx.lineWidth=1.3;ctx.stroke();
+    // Main dot
+    ctx.beginPath();ctx.arc(d.x,d.y,r,0,Math.PI*2);
+    ctx.fillStyle=ph.fill;ctx.fill();
+    // Highlight -- soft for cool, sharp for hot
+    if(d.color==='Green'||d.color==='Yellow'){
+      ctx.beginPath();ctx.arc(d.x-r*.3,d.y-r*.3,r*.46,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,255,255,0.22)';ctx.fill();
     } else {
-      ctx.beginPath(); ctx.arc(d.x - r2 * .2, d.y - r2 * .2, r2 * .18, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.32)'; ctx.fill();
+      ctx.beginPath();ctx.arc(d.x-r*.2,d.y-r*.2,r*.19,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,255,255,0.36)';ctx.fill();
     }
     counts[d.color]++;
   });
 
-  var sg = document.getElementById('sw-sg'); if (sg) sg.textContent = counts.Green;
-  var sy = document.getElementById('sw-sy'); if (sy) sy.textContent = counts.Yellow;
-  var so = document.getElementById('sw-so'); if (so) so.textContent = counts.Orange;
-  var sr = document.getElementById('sw-sr'); if (sr) sr.textContent = counts.Red;
+  // Update stat counters
+  var sg=document.getElementById('sw-sg');if(sg)sg.textContent=counts.Green;
+  var sy=document.getElementById('sw-sy');if(sy)sy.textContent=counts.Yellow;
+  var so2=document.getElementById('sw-so');if(so2)so2.textContent=counts.Orange;
+  var sr=document.getElementById('sw-sr');if(sr)sr.textContent=counts.Red;
 
-  SW_STATE.raf = requestAnimationFrame(tickSchoolWide);
+  SW_STATE.raf=requestAnimationFrame(tickSchoolWide);
 }
-if(typeof window!=='undefined') window.swSetFilter=swSetFilter;
+
+// Hover/tap to reveal name
+function initSWHover() {
+  var wrap = document.getElementById('sw-canvas-wrap');
+  var tip  = document.getElementById('sw-tip');
+  if (!wrap||!tip) return;
+  function findDot(mx,my){
+    for(var i=SW_STATE.visibleDots.length-1;i>=0;i--){
+      var d=SW_STATE.visibleDots[i];
+      var dx=d.x-mx,dy=d.y-my;
+      if(Math.sqrt(dx*dx+dy*dy)<d.r+5) return d;
+    }
+    return null;
+  }
+  wrap.addEventListener('mousemove',function(e){
+    var rect=wrap.getBoundingClientRect();
+    var d=findDot(e.clientX-rect.left,e.clientY-rect.top);
+    if(d){
+      tip.style.display='block';
+      tip.style.left=(e.clientX-rect.left)+'px';
+      tip.style.top=(e.clientY-rect.top)+'px';
+      tip.textContent=d.first+' \u00B7 '+d.grade+(d.grade==='K'?'':d.grade==='1'?'st':d.grade==='2'?'nd':d.grade==='3'?'rd':'th')+' grade';
+      wrap.style.cursor='pointer';
+    } else {
+      tip.style.display='none';
+      wrap.style.cursor='default';
+    }
+  });
+  wrap.addEventListener('mouseleave',function(){tip.style.display='none';});
+  wrap.addEventListener('touchstart',function(e){
+    var touch=e.touches[0];
+    var rect=wrap.getBoundingClientRect();
+    var d=findDot(touch.clientX-rect.left,touch.clientY-rect.top);
+    if(d){
+      tip.style.display='block';
+      tip.style.left=(touch.clientX-rect.left)+'px';
+      tip.style.top=(touch.clientY-rect.top)+'px';
+      tip.textContent=d.first+' \u00B7 '+d.grade+' grade';
+      setTimeout(function(){tip.style.display='none';},2200);
+    }
+  },{passive:true});
+}
 
 // ── PROFILE DROPDOWN ──
 var _profileDropdownInited=false;
@@ -1079,7 +1144,7 @@ function showScreen(id,back){
   });
   updateNavActive(id);
   if(id==='S-admin'&&STATE.adminTab==='overview') {
-    setTimeout(function(){ if(!SW_STATE.running) initSchoolWide(); }, 120);
+    setTimeout(function(){ if(!SW_STATE.running) { initSchoolWide(); initSWHover(); } }, 120);
   }
 }
 function goTeacher(){stopSchoolWide();STATE.entry=freshEntry();STATE.step=0;STATE.myDbLoaded=false;STATE.myDbLogs=[];updateUserDisplay();showScreen('S-teacher');showPane('log');renderStep();updateTeacherNav();updateLogBadge();renderPendingDocQueue();}
@@ -2449,12 +2514,14 @@ function buildLiveStats(rows){
 }
 
 // ── ADMIN ──
-function setTab(t){var prev=STATE.adminTab;if(prev==='overview'&&t!=='overview') stopSchoolWide();STATE.adminTab=t;document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab===t);});renderAdmin();if(t==='overview') setTimeout(function(){ if(!SW_STATE.running) initSchoolWide(); },100);}
+function setTab(t){var prev=STATE.adminTab;if(prev==='overview'&&t!=='overview') stopSchoolWide();STATE.adminTab=t;document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab===t);});renderAdmin();if(t==='overview') setTimeout(function(){ if(!SW_STATE.running) { initSchoolWide(); initSWHover(); } },100);}
 
 // Interpretation note shown once at top of admin, persists across tabs
 
 function renderAdmin(){
   var body=el('admin-body'),t=STATE.adminTab;
+  // Stop school-wide widget when switching away from overview
+  if (STATE.adminTab !== 'overview') stopSchoolWide();
   if(!STATE.liveLoaded){
     body.innerHTML=skeletonKpis(4)+skeletonRows(8);
     fetchLiveData(function(){renderAdmin();});
@@ -2502,10 +2569,13 @@ function renderAdmin(){
     });
   }
   setTimeout(drawCharts,60);
-  if(STATE.adminTab === 'overview') {
+  if(t === 'overview') {
     setTimeout(function() {
-      if(!SW_STATE.running) initSchoolWide();
-    }, 100);
+      if(!SW_STATE.running) {
+        initSchoolWide();
+        initSWHover();
+      }
+    }, 80);
   }
   body.querySelectorAll('[data-cls]').forEach(function(r){r.addEventListener('click',function(){openDet(r.dataset.cls,live);});});
   if(t==='classes') animateListIn(body);
@@ -2727,33 +2797,57 @@ function bOV(live){
       var mx=specList[0].total||1;
       return specList.map(function(s,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+subjectBarColor(i)+'">'+s.n+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">'+s.total+'</span></div>'+pb((s.total/mx)*100,subjectBarColor(i))+'</div>';}).join('');
     }())+'</div>';
-  var gradeLabels={all:'All',K:'K','1':'1st','2':'2nd','3':'3rd','4':'4th','5':'5th'};
-  var livePhysicsCard = '<div id="sw-widget-wrap" style="padding:0 0 8px">' +
-    '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">' +
-      '<span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Grade</span>' +
-      ['all','K','1','2','3','4','5'].map(function(g) {
-        return '<button class="sw-grade-btn chip' + (g===SW_STATE.activeGrade?' on':'') + '" data-grade="' + g + '" onclick="swSetFilter(\'' + g + '\')">' + gradeLabels[g] + '</button>';
-      }).join('') +
-      '<span id="sw-shown-count" style="font-size:10px;color:var(--text3);margin-left:4px"></span>' +
-    '</div>' +
-    '<div style="border-radius:10px;overflow:hidden;border:0.5px solid var(--border)">' +
+  var swCard =
+    '<div id="sw-canvas-wrap" style="border-radius:10px;overflow:hidden;border:0.5px solid var(--border);position:relative">' +
       '<canvas id="sw-canvas" style="display:block;width:100%" height="320"></canvas>' +
+      '<div id="sw-tip" style="display:none;position:absolute;pointer-events:none;' +
+        'background:rgba(20,14,60,0.95);border:0.5px solid rgba(191,169,95,0.5);' +
+        'color:#fff;font-size:11px;font-weight:600;padding:5px 12px;border-radius:20px;' +
+        'white-space:nowrap;transform:translate(-50%,-140%)"></div>' +
     '</div>' +
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;flex-wrap:wrap;gap:6px">' +
-      '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
-        ['Green:#4ABFA3','Yellow:#E8C547','Orange:#E87D2B','Red:#D63B3B'].map(function(x){var p=x.split(':');return '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text2)"><span style="width:8px;height:8px;border-radius:50%;background:'+p[1]+';display:inline-block"></span>'+p[0]+'</span>';}).join('') +
-      '</div>' +
-      '<div style="display:flex;gap:6px">' +
-        [['sg','#4ABFA3','Green'],['sy','#E8C547','Yellow'],['so','#E87D2B','Orange'],['sr','#D63B3B','Red']].map(function(x){return '<div style="background:var(--panel);border-radius:8px;padding:4px 10px;text-align:center;border:0.5px solid var(--border)"><div style="font-size:15px;font-weight:600;color:'+x[1]+'" id="sw-'+x[0]+'">0</div><div style="font-size:9px;color:var(--text3)">'+x[2]+'</div></div>';}).join('') +
-      '</div>' +
+    '<div style="margin-top:6px;height:3px;border-radius:3px;background:var(--border);overflow:hidden">' +
+      '<div id="sw-temp-fill" style="height:100%;border-radius:3px;transition:width .5s ease,background .5s ease;width:0%"></div>' +
     '</div>' +
-    '<div style="margin-top:6px;height:26px;border-radius:7px;border:0.5px solid var(--border);background:var(--panel);display:flex;align-items:center;padding:0 10px;gap:8px;overflow:hidden">' +
+    '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);padding:2px 0 8px">' +
+      '<span>Cool</span><span id="sw-temp-lbl">Calm</span><span>Hot</span>' +
+    '</div>' +
+    '<div style="display:flex;gap:6px;margin-bottom:8px">' +
+      '<div style="flex:1;background:var(--panel);border-radius:8px;padding:5px 8px;text-align:center;border:0.5px solid var(--border)">' +
+        '<div style="font-size:15px;font-weight:600;color:#4ABFA3" id="sw-sg">0</div>' +
+        '<div style="font-size:9px;color:var(--text3)">Green</div></div>' +
+      '<div style="flex:1;background:var(--panel);border-radius:8px;padding:5px 8px;text-align:center;border:0.5px solid var(--border)">' +
+        '<div style="font-size:15px;font-weight:600;color:#E8C547" id="sw-sy">0</div>' +
+        '<div style="font-size:9px;color:var(--text3)">Yellow</div></div>' +
+      '<div style="flex:1;background:var(--panel);border-radius:8px;padding:5px 8px;text-align:center;border:0.5px solid var(--border)">' +
+        '<div style="font-size:15px;font-weight:600;color:#E87D2B" id="sw-so">0</div>' +
+        '<div style="font-size:9px;color:var(--text3)">Orange</div></div>' +
+      '<div style="flex:1;background:var(--panel);border-radius:8px;padding:5px 8px;text-align:center;border:0.5px solid var(--border)">' +
+        '<div style="font-size:15px;font-weight:600;color:#D63B3B" id="sw-sr">0</div>' +
+        '<div style="font-size:9px;color:var(--text3)">Red</div></div>' +
+    '</div>' +
+    '<div style="height:26px;border-radius:7px;border:0.5px solid var(--border);background:var(--panel);' +
+      'display:flex;align-items:center;padding:0 10px;gap:8px;overflow:hidden">' +
       '<span style="font-size:9px;font-weight:700;color:#BFA95F;text-transform:uppercase;letter-spacing:.08em;flex-shrink:0">Live</span>' +
-      '<div style="flex:1;overflow:hidden;display:flex;align-items:center;gap:10px"><div id="sw-ticker-inner" style="display:flex;gap:12px;white-space:nowrap"><span style="font-size:11px;color:var(--text3)">Waiting for transitions\u2026</span></div></div>' +
-    '</div>' +
-  '</div>';
+      '<div style="flex:1;overflow:hidden;white-space:nowrap;font-size:11px" id="sw-ticker">' +
+        '<span style="color:var(--text3)">Waiting\u2026</span>' +
+      '</div>' +
+    '</div>';
+
+  // Grade filter buttons -- built as a string for the accordion meta area
+  var swFilters =
+    '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding-bottom:8px">' +
+    ['all','K','1','2','3','4','5'].map(function(g){
+      var label = g==='all' ? 'All' : g==='K' ? 'K' : g==='1' ? '1st' : g==='2' ? '2nd' : g==='3' ? '3rd' : g+'th';
+      return '<button class="chip sw-fb'+(g==='all'?' on':'')+'" data-g="'+g+'" '+
+        'onclick="swSetFilter(\''+g+'\')" style="font-size:11px;padding:3px 10px">'+
+        label+
+        '</button>';
+    }).join('') +
+    '<span id="sw-count" style="font-size:10px;color:var(--text3);margin-left:4px"></span>' +
+    '</div>';
+
   return alertStrip +
-    buildAcc('ov','live','Live class energy','school-wide \u00B7 real-time',livePhysicsCard,true) +
+    buildAcc('ov','live','Live class energy','school-wide \u00B7 real-time', swFilters+swCard, true) +
     buildAcc('ov','kpi','Summary',tot+' incidents',kpiGrid,false) +
     buildAcc('ov','weekly','Weekly trend','',weeklyCard,false) +
     buildAcc('ov','grade','By grade','',gradeCard,false) +
@@ -3901,7 +3995,7 @@ el('T-overlay').addEventListener('click',closeSheet);
 el('btn-log-another').addEventListener('click',closeSheet);
 el('AN-classes').addEventListener('click',function(){ if(SESSION.role!=='admin') return; STATE.clsFilter='all';showScreen('S-classes');renderClsExplorer(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);});
 el('AN-log').addEventListener('click',goTeacher);
-el('btn-cls-back').addEventListener('click',function(){showScreen('S-admin',true);if(STATE.adminTab==='overview') setTimeout(function(){ if(!SW_STATE.running) initSchoolWide(); },100);});
+el('btn-cls-back').addEventListener('click',function(){showScreen('S-admin',true);if(STATE.adminTab==='overview') setTimeout(function(){ if(!SW_STATE.running) { initSchoolWide(); initSWHover(); } },100);});
 el('btn-det-back').addEventListener('click',function(){
   stopLiveColorChannel();
   if(DET_PREV_SCREEN==='S-teacher'){
@@ -4170,7 +4264,7 @@ export {
   openEditSheet, closeEditSheet, populateEditSheet, openDelConfirm, closeDelConfirm,
   renderStep, goTeacher, showPane, closeSheet, renderHistory, fetchMyLogs,
   goAdmin, renderAdmin, setTab, bOV, bAL, bTM, bST, bCL,
-  initSchoolWide, swSetFilter, stopSchoolWide, startSchoolWideChannel, swPushTick, tickSchoolWide,
+  initSchoolWide, swSetFilter, stopSchoolWide, startSchoolWideChannel, swPushTick, tickSchoolWide, initSWHover,
   renderClsExplorer, filterClasses, openDet, showScreen, escHtml,
   openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen, displayBehavior,
   skeletonRows, skeletonKpis, animateListIn, showToast, emptyState,
