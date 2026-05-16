@@ -1,352 +1,487 @@
 import { SB_URL, SB_KEY } from '../../config.js';
-import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard, displayBehavior, skeletonKpis, skeletonRows, animateListIn, showToast, emptyState, authedFetch, buildAcc, subjectBarColor } from '../../main.js';
+import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard, displayBehavior, skeletonKpis, skeletonRows, animateListIn, showToast, emptyState, authedFetch, buildAcc } from '../../main.js';
 
-function fetchStudentNote(name, cb){
-  if(!SESSION.token){ if(cb) cb(new Error('not authenticated'), ''); return; }
-  fetch(SB_URL + '/rest/v1/student_notes?student_name=eq.' + encodeURIComponent(name) + '&select=notes', {
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token}
-  }).then(function(r){ return r.json(); })
-    .then(function(rows){
-      var note = (rows && rows[0] && rows[0].notes) || '';
-      if(cb) cb(null, note);
-    }).catch(function(err){ if(cb) cb(err, ''); });
+// -- HELPERS ------------------------------------------------------------------
+
+function colorFill(color) {
+  var fills = { Green:'#4ABFA3', Yellow:'#E8C547', Orange:'#E87D2B', Red:'#D63B3B' };
+  return fills[color] || '#98A2AD';
 }
 
-function saveStudentNote(name, notes, cb){
-  if(!SESSION.token){ if(cb) cb(new Error('not authenticated')); return; }
-  fetch(SB_URL + '/rest/v1/student_notes', {
-    method:'POST',
-    headers:{
-      'apikey':SB_KEY,
-      'Authorization':'Bearer '+SESSION.token,
-      'Content-Type':'application/json',
-      'Prefer':'resolution=merge-duplicates,return=minimal'
-    },
-    body: JSON.stringify({
-      student_name:name,
-      notes:notes || '',
-      updated_at:new Date().toISOString(),
-      updated_by:SESSION.email || null
-    })
-  }).then(function(r){
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    if(cb) cb(null);
-  }).catch(function(err){ if(cb) cb(err); });
+function stuInitials(name) {
+  if (!name) return '?';
+  var parts = name.trim().split(' ').filter(Boolean);
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function stuNameLink(name){
-  if(!name || name==='Other') return escHtml(name || '');
+function stuNameLink(name) {
+  if (!name || name === 'Other') return escHtml(name || '');
   var n = escHtml(name);
-  return '<span class="stu-name-link" data-stu="'+n+'">'+n+'</span>';
+  return '<span class="stu-name-link" data-stu="' + n + '">' + n + '</span>';
 }
 
-function wireStudentLinks(container, prevScreen){
-  if(!container) return;
-  container.querySelectorAll('[data-stu]').forEach(function(el){
-    el.addEventListener('click', function(e){
+function wireStudentLinks(container, prevScreen) {
+  if (!container) return;
+  container.querySelectorAll('[data-stu]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
       e.stopPropagation();
       openStudent(el.dataset.stu, prevScreen);
     });
   });
 }
 
-function studentDateStr(r){
-  return r.incident_date || r.date || (r.created_at||'').slice(0,10) || '';
+function fetchStudentNote(name, cb) {
+  if (!SESSION.token) { if (cb) cb(new Error('not authenticated'), ''); return; }
+  fetch(SB_URL + '/rest/v1/student_notes?student_name=eq.' + encodeURIComponent(name) + '&select=notes', {
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SESSION.token }
+  }).then(function(r) { return r.json(); })
+    .then(function(rows) {
+      var note = (rows && rows[0] && rows[0].notes) || '';
+      if (cb) cb(null, note);
+    }).catch(function(err) { if (cb) cb(err, ''); });
 }
-function studentWeekStart(dateStr){
-  if(!dateStr) return '';
-  var d=new Date(dateStr+'T12:00:00');
-  if(isNaN(d)) return '';
-  var day=d.getDay();
-  var mon=new Date(d);
-  mon.setDate(d.getDate()-(day===0?6:day-1));
-  return mon.toISOString().slice(0,10);
+
+function saveStudentNote(name, notes, cb) {
+  if (!SESSION.token) { if (cb) cb(new Error('not authenticated')); return; }
+  fetch(SB_URL + '/rest/v1/student_notes', {
+    method: 'POST',
+    headers: {
+      'apikey': SB_KEY,
+      'Authorization': 'Bearer ' + SESSION.token,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates,return=minimal'
+    },
+    body: JSON.stringify({
+      student_name: name,
+      notes: notes || '',
+      updated_at: new Date().toISOString(),
+      updated_by: SESSION.email || null
+    })
+  }).then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (cb) cb(null);
+  }).catch(function(err) { if (cb) cb(err); });
 }
-function buildStudentWeekly(rows){
-  var wk={};
-  (rows||[]).forEach(function(r){
-    var k=studentWeekStart(studentDateStr(r));
-    if(!k) return;
-    wk[k]=(wk[k]||0)+1;
+
+function studentDateStr(r) {
+  return r.incident_date || (r.created_at || '').slice(0, 10) || '';
+}
+
+function studentWeekStart(dateStr) {
+  if (!dateStr) return '';
+  var d = new Date(dateStr + 'T12:00:00');
+  if (isNaN(d)) return '';
+  var day = d.getDay();
+  var mon = new Date(d);
+  mon.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  return mon.toISOString().slice(0, 10);
+}
+
+function buildStudentWeekly(rows) {
+  var wk = {};
+  (rows || []).forEach(function(r) {
+    var k = studentWeekStart(studentDateStr(r));
+    if (!k) return;
+    wk[k] = (wk[k] || 0) + 1;
   });
-  var keys=Object.keys(wk).sort().slice(-10);
+  var keys = Object.keys(wk).sort().slice(-10);
   return {
-    labels:keys.map(function(k){
-      var d=new Date(k+'T12:00:00');
-      return isNaN(d)?k:(d.toLocaleString('en-US',{month:'short'})+' '+d.getDate());
+    labels: keys.map(function(k) {
+      var d = new Date(k + 'T12:00:00');
+      return isNaN(d) ? k : (d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getDate());
     }),
-    values:keys.map(function(k){return wk[k]||0;})
+    values: keys.map(function(k) { return wk[k] || 0; })
   };
 }
 
-function openStudent(name, prevScreen){
-  var map = {
-    'S-detail':'‹ Class',
-    'S-classes':'‹ Classes',
-    'S-admin':'‹ Dashboard',
-    'S-teacher':'‹ My Logs'
+// -- BLOCK HEATMAP ------------------------------------------------------------
+
+function buildBlockHeatmap(rows) {
+  var counts = {};
+  (rows || []).forEach(function(r) {
+    if (!r.specials) return;
+    if (r._type === 'transition' && r.to_color === 'Green' && !r.needs_documentation) return;
+    counts[r.specials] = (counts[r.specials] || 0) + 1;
+  });
+  var blocks = Object.keys(counts).sort(function(a, b) { return counts[b] - counts[a]; });
+  if (!blocks.length) return '<div style="font-size:12px;color:var(--text3);padding:8px 0">No block data yet</div>';
+  var max = counts[blocks[0]] || 1;
+  return blocks.map(function(b, i) {
+    var pct  = Math.round((counts[b] / max) * 100);
+    var fill = i === 0 ? '#D63B3B' : i === 1 ? '#E87D2B' : '#271A70';
+    return '<div style="margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">' +
+        '<span style="font-size:12px;font-weight:600;color:var(--text)">' + escHtml(b) + '</span>' +
+        '<span style="font-size:11px;color:var(--text3)">' + counts[b] + ' event' + (counts[b] !== 1 ? 's' : '') + '</span>' +
+      '</div>' +
+      '<div style="height:8px;border-radius:4px;background:var(--border)">' +
+        '<div style="height:100%;width:' + pct + '%;border-radius:4px;background:' + fill + ';transition:width 0.4s ease"></div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// -- TRANSITION ROW -----------------------------------------------------------
+
+function buildTransitionRow(r) {
+  var fromC = colorFill(r.from_color);
+  var toC   = colorFill(r.to_color);
+  var time  = r.created_at
+    ? new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : r.date || '';
+  return '<div style="padding:10px 0;border-bottom:0.5px solid var(--border);display:flex;gap:10px;align-items:flex-start">' +
+    '<div style="display:flex;align-items:center;gap:5px;flex-shrink:0;padding-top:2px">' +
+      '<div style="width:10px;height:10px;border-radius:50%;background:' + fromC + '"></div>' +
+      '<span style="font-size:11px;color:var(--text3)">\u2192</span>' +
+      '<div style="width:10px;height:10px;border-radius:50%;background:' + toC + '"></div>' +
+    '</div>' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">' +
+        '<span style="font-size:12px;font-weight:700;color:' + toC + '">' + escHtml(r.from_color) + ' \u2192 ' + escHtml(r.to_color) + '</span>' +
+        '<span style="font-size:10px;color:var(--text3);flex-shrink:0">' + escHtml(time) + '</span>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--text3);margin-top:1px">' + escHtml(r.specials || '') + '</div>' +
+      (r.duration_mins !== null && r.duration_mins !== undefined
+        ? '<div style="font-size:11px;color:var(--text2);margin-top:2px">' + r.duration_mins + ' min</div>' : '') +
+      (r.notes ? '<div style="font-size:11px;color:var(--text2);margin-top:2px;white-space:pre-wrap">' + escHtml(r.notes) + '</div>' : '') +
+      (r.needs_documentation
+        ? '<div style="font-size:10px;color:#E87D2B;font-weight:700;margin-top:3px">\u26a0\ufe0f Needs documentation</div>' : '') +
+    '</div>' +
+  '</div>';
+}
+
+// -- RENDER UNIFIED TIMELINE --------------------------------------------------
+
+function renderUnifiedTimeline(rows, container, onAfterEdit) {
+  if (!rows || !rows.length) {
+    container.innerHTML = emptyState('No behavioral events on record', 'Incidents and Quick Color events will appear here when logged.');
+    return;
+  }
+  var incidents   = rows.filter(function(r) { return r._type !== 'transition'; });
+  var transitions = rows.filter(function(r) { return r._type === 'transition'; });
+
+  renderIncidentList(incidents.length ? incidents : [], container, onAfterEdit);
+
+  if (transitions.length) {
+    var tWrap = document.createElement('div');
+    tWrap.style.cssText = 'margin-top:10px';
+    var tHdr = document.createElement('div');
+    tHdr.className = 'sec';
+    tHdr.textContent = 'Quick Color events';
+    tWrap.appendChild(tHdr);
+    var tList = document.createElement('div');
+    tList.className = 'card';
+    tList.style.padding = '4px 12px';
+    tList.innerHTML = transitions.map(buildTransitionRow).join('');
+    tWrap.appendChild(tList);
+    container.appendChild(tWrap);
+  }
+}
+
+// -- MAIN OPEN FUNCTION -------------------------------------------------------
+
+function openStudent(name, prevScreen) {
+  var navMap = {
+    'S-detail':  '\u2039 Class',
+    'S-classes': '\u2039 Classes',
+    'S-admin':   '\u2039 Dashboard',
+    'S-teacher': '\u2039 My Logs'
   };
   setStuPrevScreen(prevScreen || 'S-detail');
   var ps = getStuPrevScreen();
-  var b = document.getElementById('btn-stu-back');
-  if(b) b.textContent = map[ps] || '‹ Back';
+  var backBtn = document.getElementById('btn-stu-back');
+  if (backBtn) backBtn.textContent = navMap[ps] || '\u2039 Back';
+
   var title = document.getElementById('stu-title');
-  var sub = document.getElementById('stu-sub');
-  var body = document.getElementById('stu-body');
-  if(title) title.textContent = 'Loading…';
-  if(sub) sub.textContent = 'Loading…';
-  if(body) body.innerHTML = skeletonKpis(6) + skeletonRows(6);
+  var sub   = document.getElementById('stu-sub');
+  var body  = document.getElementById('stu-body');
+  if (title) title.textContent = name || 'Scholar';
+  if (sub)   sub.textContent   = '';
+  if (body)  body.innerHTML    = skeletonKpis(6) + skeletonRows(10);
   showScreen('S-student');
 
-  fetchStudentIncidents(name, function(err, rows){
-    rows = rows || [];
-    if(err){
-      if(body) body.innerHTML = emptyState('Could not load records', 'Check your connection and try again.');
-      showToast('Could not connect', 'error');
-      return;
-    }
-    var total = rows.length;
-    var transitionCount = rows.filter(function(r){ return r._type === 'transition'; }).length;
-    var incidentCount = rows.filter(function(r){ return r._type === 'incident'; }).length;
-    var chartY = rows.filter(function(r){ return !!r.color_chart; }).length;
-    var homeY = rows.filter(function(r){ return !!r.home_contact; }).length;
-    var behCounts = {};
-    var spCounts = {};
-    var blockCounts = {};
-    rows.forEach(function(r){
-      (r.behaviors||[]).forEach(function(bh){ var mapped=displayBehavior(bh); behCounts[mapped]=(behCounts[mapped]||0)+1; });
-      if(r.specials) spCounts[r.specials]=(spCounts[r.specials]||0)+1;
-      if(!r.specials) return;
-      if(r._type === 'transition' && r.to_color === 'Green') return;
-      blockCounts[r.specials] = (blockCounts[r.specials] || 0) + 1;
-    });
-    var topBehavior = Object.keys(behCounts).sort(function(a,b){ return behCounts[b]-behCounts[a]; })[0] || '—';
-    var topSpecial = Object.keys(spCounts).sort(function(a,b){ return spCounts[b]-spCounts[a]; })[0] || '—';
-    var blocks = Object.keys(blockCounts).sort(function(a,b){ return blockCounts[b]-blockCounts[a]; });
-    var maxBlock = blocks.length ? blockCounts[blocks[0]] : 0;
+  var isAdmin = SESSION.role === 'admin';
+  var TOTAL   = isAdmin ? 4 : 3;
+  var done    = 0;
+  var stuRecord = null, incidents = [], faRows = [], accRows = [];
 
-    if(title) title.textContent = name || 'Scholar';
-    if(sub) sub.textContent = total + ' behavior records';
+  function tryRender() {
+    done++;
+    if (done >= TOTAL) renderProfile(name, stuRecord, incidents, faRows, accRows, body);
+  }
 
-    var kpiHtml =
-      '<div class="kpi-grid" style="margin-bottom:10px">'+
-        '<div class="kpi"><div class="lbl">Total records</div><div class="val">'+total+'</div></div>'+
-        '<div class="kpi"><div class="lbl">Quick Color events</div><div class="val">'+transitionCount+'</div></div>'+
-        '<div class="kpi"><div class="lbl">Full incidents</div><div class="val">'+incidentCount+'</div></div>'+
-        '<div class="kpi"><div class="lbl">Chart used</div><div class="val">'+(total?Math.round(chartY/total*100):0)+'%</div></div>'+
-        '<div class="kpi"><div class="lbl">Home contact</div><div class="val">'+(total?Math.round(homeY/total*100):0)+'%</div></div>'+
-        '<div class="kpi"><div class="lbl">Top behavior</div><div class="val" style="font-size:13px">'+escHtml(topBehavior)+'</div></div>'+
-      '</div>';
-    var blockHeatHtml = '<div class="card" style="margin-bottom:10px">'+
-      '<div style="font-size:11px;color:var(--text2);margin-bottom:8px">By specials block</div>'+
-      (blocks.length ? blocks.map(function(block, i){
-        var count = blockCounts[block] || 0;
-        var pct = maxBlock ? Math.max(4, Math.round(count / maxBlock * 100)) : 0;
-        var col = subjectBarColor(i);
-        return '<div style="display:grid;grid-template-columns:minmax(78px,1fr) 3fr 28px;gap:8px;align-items:center;margin-bottom:7px">'+
-          '<div style="font-size:11px;color:'+col+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(block)+'</div>'+
-          '<div style="height:8px;border-radius:999px;background:rgba(152,162,173,.18);overflow:hidden">'+
-            '<div style="width:'+pct+'%;height:100%;border-radius:999px;background:'+col+'"></div>'+
-          '</div>'+
-          '<div style="font-size:11px;color:var(--text2);text-align:right">'+count+'</div>'+
-        '</div>';
-      }).join('') : emptyState('No specials blocks yet', ''))+
-    '</div>';
-    var weeklyHtml = '<div class="card" style="margin-bottom:10px"><canvas id="stu-wk-line" height="80" style="width:100%;display:block"></canvas></div>';
-    var heatmapHtml = '<div class="card" id="stu-heat-card" style="margin-bottom:10px;overflow-x:auto"></div>'+
-      '<div class="card" style="margin-bottom:10px"><div style="font-size:11px;color:var(--text2);margin-bottom:6px">Most-logged specials class</div><div style="font-size:14px">'+escHtml(topSpecial)+'</div></div>';
-    var incHtml = '<div id="stu-inc-list"></div>';
-    var firstAidHtml = '<div id="stu-first-aid"></div>';
-    var accomHtml = SESSION.role==='admin' ?
-      '<div class="card" style="margin-bottom:10px">'+
-        '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Admin notes</div>'+
-        '<textarea id="stu-notes-ta" style="width:100%;min-height:88px;background:var(--panel);border:0.5px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit"></textarea>'+
-        '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="pill" id="stu-save-note">Save note</button></div>'+
-        '<div id="stu-note-status" style="font-size:10px;color:var(--text3);margin-top:6px"></div>'+
-      '</div>'+
-      '<div id="stu-accommodations"></div>' : '';
-    var transHtml = SESSION.role==='admin' ? '<div id="stu-transitions"></div>' : '';
-    body.innerHTML = kpiHtml + blockHeatHtml +
-      buildAcc('stu','trend','Weekly trend','',weeklyHtml,true) +
-      buildAcc('stu','heatmap','Pattern heatmap','',heatmapHtml,true) +
-      buildAcc('stu','incidents','Behavior timeline',total+' records',incHtml,true) +
-      buildAcc('stu','firstaid','First aid / injury log','',firstAidHtml,false) +
-      (SESSION.role==='admin' ? buildAcc('stu','acc','Accommodations','Admin only',accomHtml,false) : '') +
-      (SESSION.role==='admin' ? buildAcc('stu','trans','Color transition history','Admin only',transHtml,false) : '');
+  // 1. Student roster record (guardian, espark, clever_id)
+  authedFetch(
+    '/rest/v1/students?student_name=eq.' + encodeURIComponent(name) +
+    '&select=student_name,homeroom,grade,grade_code,guardian_name,guardian_email,' +
+    'guardian_phone,clever_id,testing_id,espark_username,espark_password,photo_url&limit=1'
+  ).then(function(r) { return r.json(); })
+   .then(function(rows) { stuRecord = (rows && rows[0]) || null; })
+   .catch(function() { stuRecord = null; })
+   .then(tryRender);
 
-    if(SESSION.role==='admin'){
-      fetchStudentNote(name, function(_e, note){
-        var ta = document.getElementById('stu-notes-ta');
-        if(ta) ta.value = note || '';
-      });
-      var saveBtn = document.getElementById('stu-save-note');
-      if(saveBtn){
-        saveBtn.addEventListener('click', function(){
-          var ta = document.getElementById('stu-notes-ta');
-          var st = document.getElementById('stu-note-status');
-          saveBtn.disabled = true;
-          saveBtn.textContent = '[ Saving… ]';
-          saveStudentNote(name, ta ? ta.value : '', function(e2){
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Save note';
-            if(st) st.textContent = e2 ? 'Save failed' : '';
-            if(e2) showToast('Could not connect', 'error');
-            else showToast('Note saved');
-          });
-        });
-      }
-    }
-
-    if(SESSION.role==='admin'){
-      var ctWrap = document.getElementById('stu-transitions');
-      if(ctWrap){
-        authedFetch('/rest/v1/color_transitions?student=eq.' + encodeURIComponent(name) + '&select=*&order=created_at.desc&limit=30')
-          .then(function(r){ return r.json(); })
-          .then(function(rows){
-            if(!rows || !rows.length){
-              ctWrap.innerHTML = emptyState('No color transitions logged', 'Color transitions will appear here when teachers log them.');
-              return;
-            }
-            var colorHex = { Green:'#1e7e44', Yellow:'#BFA95F', Orange:'#d4622a', Red:'#c0392b' };
-            ctWrap.innerHTML = '<div class="card">' +
-              rows.map(function(r){
-                var fromC = colorHex[r.from_color] || '#98A2AD';
-                var toC = colorHex[r.to_color] || '#98A2AD';
-                var time = r.created_at ? new Date(r.created_at).toLocaleString('en-US', {
-                  month:'short', day:'numeric', hour:'numeric', minute:'2-digit'
-                }) : '';
-                var resolved = r.resolved_at
-                  ? '<span style="font-size:10px;color:#1e7e44;margin-left:8px;font-weight:600">Returned to Green</span>'
-                  : '';
-                return '<div style="padding:10px 0;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:10px">' +
-                  '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
-                    '<div style="width:10px;height:10px;border-radius:50%;background:' + fromC + '"></div>' +
-                    '<span style="font-size:12px;color:var(--text3)">→</span>' +
-                    '<div style="width:10px;height:10px;border-radius:50%;background:' + toC + '"></div>' +
-                  '</div>' +
-                  '<div style="flex:1;min-width:0">' +
-                    '<span style="font-size:12px;font-weight:600;color:var(--text)">' + escHtml(r.specials || '') + '</span>' +
-                    resolved +
-                    (r.notes ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(r.notes) + '</div>' : '') +
-                  '</div>' +
-                  '<span style="font-size:10px;color:var(--text3);flex-shrink:0">' + escHtml(time) + '</span>' +
-                '</div>';
-              }).join('') +
-            '</div>';
-          })
-          .catch(function(){
-            if(ctWrap) ctWrap.innerHTML = emptyState('Could not load transitions', '');
-          });
-      }
-    }
-
-    var listEl = document.getElementById('stu-inc-list');
-    var metaEl = document.getElementById('stu-inc-meta');
-    var weekly=buildStudentWeekly(rows);
-    if(weekly.values.length){
-      setTimeout(function(){ drawLine('stu-wk-line', weekly.labels, weekly.values); },20);
-    }
-    var activeRows=rows.slice();
-    function renderStudentList(nextRows){
-      activeRows=nextRows||[];
-      if(metaEl) metaEl.textContent=activeRows.length+' records';
-      renderIncidentList(activeRows, listEl, onRefresh);
-      animateListIn(listEl);
-    }
-    var onRefresh = function(){
-      fetchStudentIncidents(name, function(_e2, rows2){
-        rows=rows2||[];
-        var wk2=buildStudentWeekly(rows);
-        if(wk2.values.length){
-          setTimeout(function(){ drawLine('stu-wk-line', wk2.labels, wk2.values); },20);
-        }
-        wireHeatCard('stu-heat-card', rows, {
-          prefix:'stu-heat',
-          showFilters:false,
-          onCellClick:function(filteredRows, ctx){
-            if(!filteredRows.length){
-              if(metaEl) metaEl.textContent='0 records · '+ctx.period+' '+ctx.day;
-              renderIncidentList([], listEl, onRefresh);
-              return;
-            }
-            if(metaEl) metaEl.textContent=filteredRows.length+' records · '+ctx.period+' '+ctx.day;
-            renderIncidentList(filteredRows, listEl, onRefresh);
-          }
-        });
-        renderStudentList(rows);
-      });
-    };
-    wireHeatCard('stu-heat-card', rows, {
-      prefix:'stu-heat',
-      showFilters:false,
-      onCellClick:function(filteredRows, ctx){
-        if(!filteredRows.length){
-          if(metaEl) metaEl.textContent='0 records · '+ctx.period+' '+ctx.day;
-          renderIncidentList([], listEl, onRefresh);
-          return;
-        }
-        if(metaEl) metaEl.textContent=filteredRows.length+' records · '+ctx.period+' '+ctx.day;
-        renderIncidentList(filteredRows, listEl, onRefresh);
-      }
-    });
-    renderStudentList(rows);
-    wireStudentLinks(body, 'S-student');
-
-    fetch(SB_URL + '/rest/v1/first_aid_log?student=eq.' + encodeURIComponent(name) + '&select=*&order=incident_date.desc,created_at.desc&limit=100', {
-      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token}
-    }).then(function(r){
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      return r.json();
-    }).then(function(faRows){
-      var wrap=document.getElementById('stu-first-aid');
-      if(!wrap) return;
-      if(!faRows || !faRows.length){
-        wrap.innerHTML='<div class="card">' + emptyState('No first aid records', 'First aid events will appear here when logged.') + '</div>';
-        return;
-      }
-      wrap.innerHTML='<div class="card">'+faRows.map(function(r){
-        return '<div style="padding:8px 0;border-bottom:0.5px solid var(--border)">'+
-          '<div style="font-size:12px;font-weight:600">'+escHtml(r.incident_date||'—')+' · '+escHtml(r.specials||'—')+'</div>'+
-          '<div style="font-size:11px;color:var(--text2);margin-top:2px">Injury: '+escHtml(r.injury_description||'—')+'</div>'+
-          '<div style="font-size:11px;color:var(--text2)">Treatment: '+escHtml(r.treatment||'—')+'</div>'+
-          '<div style="font-size:11px;color:var(--text2)">Returned to activity: '+(r.returned_to_activity?'Yes':'No')+' · Home contacted: '+(r.home_contact?'Yes':'No')+'</div>'+
-        '</div>';
-      }).join('')+'</div>';
-    }).catch(function(){
-      var wrap=document.getElementById('stu-first-aid');
-      if(wrap) wrap.innerHTML='<div class="card">' + emptyState('Could not load records', 'Check your connection and try again.') + '</div>';
-      showToast('Could not load first aid records', 'error');
-    });
-    if(SESSION.role==='admin'){
-      var accWrap = document.getElementById('stu-accommodations');
-      if(accWrap){
-        fetch(SB_URL + '/rest/v1/student_accommodations?student_name=eq.' + encodeURIComponent(name) + '&select=plan_type,classroom_accommodations&limit=1', {
-          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token}
-        }).then(function(r){
-          if(!r.ok) throw new Error('HTTP '+r.status);
-          return r.json();
-        }).then(function(rows){
-          if(!rows || !rows.length || !rows[0].classroom_accommodations){
-            accWrap.innerHTML=emptyState('No accommodations on file', '');
-            return;
-          }
-          var rec=rows[0];
-          accWrap.innerHTML=
-            '<div class="card">'+
-              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
-                '<span style="font-size:12px;font-weight:700;color:var(--indigo)">'+escHtml(rec.plan_type)+' — Classroom Accommodations</span>'+
-                '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--indigo-lt);color:var(--indigo);font-weight:600;letter-spacing:.04em">CONFIDENTIAL</span>'+
-              '</div>'+
-              '<div style="font-size:13px;color:var(--text2);line-height:1.75">'+escHtml(rec.classroom_accommodations)+'</div>'+
-            '</div>';
-        }).catch(function(){
-          if(accWrap) accWrap.innerHTML=emptyState('Could not load accommodations', '');
-          showToast('Could not connect', 'error');
-        });
-      }
-    }
-
+  // 2. Unified behavioral timeline (incidents + color_transitions)
+  fetchStudentIncidents(name, function(_e, rows) {
+    incidents = rows || [];
+    tryRender();
   });
+
+  // 3. First aid log
+  authedFetch(
+    '/rest/v1/first_aid_log?student=eq.' + encodeURIComponent(name) +
+    '&select=*&order=incident_date.desc,created_at.desc&limit=50'
+  ).then(function(r) { return r.json(); })
+   .then(function(rows) { faRows = Array.isArray(rows) ? rows : []; })
+   .catch(function() { faRows = []; })
+   .then(tryRender);
+
+  // 4. Accommodations (admin only)
+  if (isAdmin) {
+    authedFetch(
+      '/rest/v1/student_accommodations?student_name=eq.' + encodeURIComponent(name) +
+      '&select=plan_type,classroom_accommodations&limit=1'
+    ).then(function(r) { return r.json(); })
+     .then(function(rows) { accRows = Array.isArray(rows) ? rows : []; })
+     .catch(function() { accRows = []; })
+     .then(tryRender);
+  }
+}
+
+// -- RENDER PROFILE -----------------------------------------------------------
+
+function renderProfile(name, stu, incidents, faRows, accRows, body) {
+  var isAdmin = SESSION.role === 'admin';
+
+  // Derived stats
+  var fullIncidents = incidents.filter(function(r) { return r._type !== 'transition'; });
+  var transitions   = incidents.filter(function(r) { return r._type === 'transition'; });
+  var total         = fullIncidents.length;
+  var qcCount       = transitions.length;
+  var chartY        = fullIncidents.filter(function(r) { return !!r.color_chart; }).length;
+  var homeY         = fullIncidents.filter(function(r) { return !!r.home_contact; }).length;
+  var chartPct      = total ? Math.round(chartY / total * 100) : 0;
+  var homePct       = total ? Math.round(homeY / total * 100) : 0;
+
+  var behCounts = {}, spCounts = {};
+  incidents.forEach(function(r) {
+    (r.behaviors || []).forEach(function(bh) {
+      var mapped = displayBehavior(bh);
+      behCounts[mapped] = (behCounts[mapped] || 0) + 1;
+    });
+    if (r.specials && !(r._type === 'transition' && r.to_color === 'Green' && !r.needs_documentation)) {
+      spCounts[r.specials] = (spCounts[r.specials] || 0) + 1;
+    }
+  });
+  var topBehavior = Object.keys(behCounts).sort(function(a, b) { return behCounts[b] - behCounts[a]; })[0] || '\u2014';
+  var topBlock    = Object.keys(spCounts).sort(function(a, b)  { return spCounts[b]  - spCounts[a];  })[0] || '\u2014';
+
+  var accRec      = accRows && accRows[0];
+  var accPlanType = accRec ? (accRec.plan_type || '') : '';
+  var initials    = stuInitials(name);
+  var gradeCode   = (stu && (stu.grade_code || stu.grade)) || '';
+  var homeroom    = (stu && stu.homeroom) || '';
+
+  // Header card
+  var guardianHtml = '';
+  if (isAdmin && stu && (stu.guardian_name || stu.guardian_email)) {
+    guardianHtml =
+      '<div style="margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border)">' +
+        (stu.guardian_name
+          ? '<div style="font-size:12px;font-weight:600;color:var(--text)">' + escHtml(stu.guardian_name) + '</div>' : '') +
+        (stu.guardian_email
+          ? '<div style="font-size:11px;color:var(--text3)">' + escHtml(stu.guardian_email) + '</div>' : '') +
+        (stu.guardian_phone
+          ? '<div style="font-size:11px;color:var(--text3)">' + escHtml(stu.guardian_phone) + '</div>' : '') +
+      '</div>';
+  }
+
+  var esparkHtml = '';
+  if (isAdmin && stu && (stu.espark_username || stu.clever_id)) {
+    esparkHtml =
+      '<div style="text-align:right;flex-shrink:0;margin-left:8px">' +
+        (stu.espark_username
+          ? '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">eSpark</div>' +
+            '<div style="font-size:11px;font-weight:600;font-family:monospace;color:var(--text)">' + escHtml(stu.espark_username) + '</div>' +
+            (stu.espark_password
+              ? '<div style="font-size:11px;font-family:monospace;color:var(--text3)">' + escHtml(stu.espark_password) + '</div>' : '') : '') +
+        (stu.clever_id
+          ? '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:6px">Clever ID</div>' +
+            '<div style="font-size:10px;font-family:monospace;color:var(--text2)">' + escHtml(stu.clever_id.slice(0, 14)) + '\u2026</div>' : '') +
+      '</div>';
+  }
+
+  var headerHtml =
+    '<div class="card" style="margin-top:10px">' +
+      '<div style="display:flex;gap:12px;align-items:flex-start">' +
+        '<div style="width:54px;height:54px;border-radius:50%;background:var(--indigo);' +
+          'display:flex;align-items:center;justify-content:center;flex-shrink:0;' +
+          'color:var(--gold);font-weight:800;font-size:20px;letter-spacing:-0.02em">' +
+          escHtml(initials) +
+        '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">' +
+            '<span style="font-size:17px;font-weight:800;color:var(--text)">' + escHtml(name) + '</span>' +
+            (gradeCode
+              ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;' +
+                'background:var(--indigo);color:var(--gold)">Gr ' + escHtml(gradeCode) + '</span>' : '') +
+            (accPlanType
+              ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;' +
+                'background:#E87D2B22;color:#E87D2B;border:1px solid #E87D2B44">' + escHtml(accPlanType) + '</span>' : '') +
+          '</div>' +
+          (homeroom ? '<div style="font-size:12px;color:var(--text3)">' + escHtml(homeroom) + '</div>' : '') +
+          guardianHtml +
+        '</div>' +
+        esparkHtml +
+      '</div>' +
+    '</div>';
+
+  // KPI row
+  var kpiHtml =
+    '<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:10px">' +
+      '<div class="kpi"><div class="lbl">Full incidents</div><div class="val">' + total + '</div></div>' +
+      '<div class="kpi"><div class="lbl">Quick Color</div><div class="val">' + qcCount + '</div></div>' +
+      '<div class="kpi"><div class="lbl">Chart used</div><div class="val">' + chartPct + '%</div></div>' +
+      '<div class="kpi"><div class="lbl">Home contact</div><div class="val">' + homePct + '%</div></div>' +
+      '<div class="kpi"><div class="lbl">Top behavior</div><div class="val" style="font-size:12px;line-height:1.2;margin-top:6px">' + escHtml(topBehavior) + '</div></div>' +
+      '<div class="kpi"><div class="lbl">Hardest block</div><div class="val" style="font-size:12px;line-height:1.2;margin-top:6px">' + escHtml(topBlock) + '</div></div>' +
+    '</div>';
+
+  // Block heatmap
+  var heatHtml =
+    '<div class="card" style="margin-bottom:10px">' +
+      '<div class="sec" style="margin-top:0">By specials block</div>' +
+      buildBlockHeatmap(incidents) +
+    '</div>';
+
+  // Weekly trend
+  var weeklyHtml =
+    '<div class="card" style="margin-bottom:10px">' +
+      '<canvas id="stu-wk-line" height="80" style="width:100%;display:block"></canvas>' +
+    '</div>';
+
+  // First aid
+  var faHtml = !faRows.length
+    ? '<div class="card">' + emptyState('No first aid records', 'First aid events will appear here when logged.') + '</div>'
+    : '<div class="card">' + faRows.map(function(r) {
+        return '<div style="padding:8px 0;border-bottom:0.5px solid var(--border)">' +
+          '<div style="font-size:12px;font-weight:700;color:var(--text)">' + escHtml(r.incident_date || '\u2014') + ' \u00B7 ' + escHtml(r.specials || '\u2014') + '</div>' +
+          '<div style="font-size:11px;color:var(--text2);margin-top:2px">Injury: ' + escHtml(r.injury_description || '\u2014') + '</div>' +
+          '<div style="font-size:11px;color:var(--text2)">Treatment: ' + escHtml(r.treatment || '\u2014') + '</div>' +
+          '<div style="font-size:11px;color:var(--text3)">Returned: ' + (r.returned_to_activity ? 'Yes' : 'No') + ' \u00B7 Home contacted: ' + (r.home_contact ? 'Yes' : 'No') + '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+
+  // Pattern heatmap
+  var patternHtml = '<div id="stu-heat-card" style="margin-bottom:10px;overflow-x:auto"></div>';
+
+  // Timeline placeholder
+  var timelineHtml = '<div id="stu-inc-list"></div>';
+
+  // Accommodations (admin)
+  var accomHtml = '';
+  if (isAdmin) {
+    accomHtml = (accRec && accRec.classroom_accommodations)
+      ? '<div class="card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+            '<span style="font-size:12px;font-weight:700;color:var(--indigo)">' + escHtml(accRec.plan_type || 'Plan') + ' \u2014 Classroom Accommodations</span>' +
+            '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--indigo-lt);color:var(--indigo);font-weight:700;letter-spacing:.04em">CONFIDENTIAL</span>' +
+          '</div>' +
+          '<div style="font-size:13px;color:var(--text2);line-height:1.8;white-space:pre-wrap">' + escHtml(accRec.classroom_accommodations) + '</div>' +
+        '</div>'
+      : emptyState('No accommodations on file', '');
+  }
+
+  // Admin notes (admin)
+  var notesHtml = '';
+  if (isAdmin) {
+    notesHtml =
+      '<div class="card">' +
+        '<div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Admin notes</div>' +
+        '<textarea id="stu-notes-ta" style="width:100%;min-height:88px;background:var(--panel);border:0.5px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:8px">' +
+          '<button class="pill" id="stu-save-note">Save note</button>' +
+        '</div>' +
+        '<div id="stu-note-status" style="font-size:10px;color:var(--text3);margin-top:4px;text-align:right"></div>' +
+      '</div>';
+  }
+
+  // Assemble layout
+  var primaryHtml =
+    buildAcc('stu', 'timeline', 'Behavioral timeline', (total + qcCount) + ' events', timelineHtml, true) +
+    buildAcc('stu', 'blocks',   'Block pattern',       'by specials class',            heatHtml,     true) +
+    buildAcc('stu', 'pattern',  'Day/time heatmap',    '',                             patternHtml,  false) +
+    buildAcc('stu', 'trend',    'Weekly trend',        '',                             weeklyHtml,   false) +
+    buildAcc('stu', 'firstaid', 'First aid / injury log', faRows.length + ' records', faHtml,       false);
+
+  var sidebarHtml = '';
+  if (isAdmin) {
+    sidebarHtml =
+      buildAcc('stu', 'acc',   'Accommodations', accPlanType || 'Admin only', accomHtml, !!accRec) +
+      buildAcc('stu', 'notes', 'Admin notes',    'Private',                  notesHtml, false);
+  }
+
+  body.innerHTML =
+    headerHtml +
+    kpiHtml +
+    '<div id="stu-two-col" style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">' +
+      '<div id="stu-primary" style="flex:1 1 300px;min-width:0">' + primaryHtml + '</div>' +
+      (sidebarHtml
+        ? '<div id="stu-sidebar" style="flex:0 1 280px;min-width:0">' + sidebarHtml + '</div>'
+        : '') +
+    '</div>';
+
+  // Post-mount wiring
+  var listEl    = document.getElementById('stu-inc-list');
+
+  var onRefresh = function() {
+    fetchStudentIncidents(name, function(_e, rows2) {
+      incidents = rows2 || [];
+      var wk2 = buildStudentWeekly(incidents);
+      if (wk2.values.length) setTimeout(function() { drawLine('stu-wk-line', wk2.labels, wk2.values); }, 20);
+      wireHeatCard('stu-heat-card', incidents.filter(function(r) { return r._type !== 'transition'; }), {
+        prefix: 'stu-heat', showFilters: false,
+        onCellClick: function(filteredRows) { if (listEl) renderUnifiedTimeline(filteredRows, listEl, onRefresh); }
+      });
+      if (listEl) renderUnifiedTimeline(incidents, listEl, onRefresh);
+    });
+  };
+
+  if (listEl) renderUnifiedTimeline(incidents, listEl, onRefresh);
+
+  wireHeatCard('stu-heat-card', fullIncidents, {
+    prefix: 'stu-heat', showFilters: false,
+    onCellClick: function(filteredRows) { if (listEl) renderUnifiedTimeline(filteredRows, listEl, onRefresh); }
+  });
+
+  var weekly = buildStudentWeekly(incidents);
+  if (weekly.values.length) {
+    setTimeout(function() { drawLine('stu-wk-line', weekly.labels, weekly.values); }, 40);
+  }
+
+  if (isAdmin) {
+    fetchStudentNote(name, function(_e, note) {
+      var ta = document.getElementById('stu-notes-ta');
+      if (ta) ta.value = note || '';
+    });
+    var saveBtn = document.getElementById('stu-save-note');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function() {
+        var ta = document.getElementById('stu-notes-ta');
+        var st = document.getElementById('stu-note-status');
+        saveBtn.disabled = true; saveBtn.textContent = '[ Saving\u2026 ]';
+        saveStudentNote(name, ta ? ta.value : '', function(e2) {
+          saveBtn.disabled = false; saveBtn.textContent = 'Save note';
+          if (st) st.textContent = e2 ? 'Save failed' : 'Saved';
+          if (e2) showToast('Could not connect', 'error');
+          else showToast('Note saved');
+        });
+      });
+    }
+  }
+
+  wireStudentLinks(body, 'S-student');
+  animateListIn(listEl);
 }
 
 export { openStudent, wireStudentLinks, stuNameLink, fetchStudentNote, saveStudentNote };
