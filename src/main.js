@@ -202,6 +202,10 @@ function scholarBarColor(count){
 function subjectBarColor(index){
   return index%2===0?'#271A70':'#BFA95F';
 }
+function colorFill(color){
+  var fills = {Green:'#4ABFA3', Yellow:'#E8C547', Orange:'#E87D2B', Red:'#D63B3B'};
+  return fills[color] || '#98A2AD';
+}
 
 var HEAT_SCALE=[
   '#EDEAFA',
@@ -3334,25 +3338,105 @@ function fetchClassIncidents(homeroom, cb){
 
 function fetchStudentIncidents(name, cb){
   if(!SESSION.token){ if(cb) cb(new Error('not authenticated'),[]); return; }
-  var tok=SESSION.token;
-  var q='select=*&student=eq.'+encodeURIComponent(name)+'&order=incident_date.desc,created_at.desc&limit=200';
-  fetch(SB_URL+'/rest/v1/incidents?'+q,{
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok}
-  }).then(function(r){return r.json();})
-    .then(function(rows){if(cb)cb(null,rows||[]);})
-    .catch(function(err){if(cb)cb(err,[]);});
+
+  var incidentsDone = false, transitionsDone = false;
+  var incidentRows = [], transitionRows = [];
+  var err1 = null, err2 = null;
+
+  function merge(){
+    if(!incidentsDone || !transitionsDone) return;
+    if(err1 && err2){ if(cb) cb(err1, []); return; }
+
+    var unified = incidentRows.map(function(r){
+      return {
+        _type:        'incident',
+        id:           r.id,
+        student:      r.student,
+        homeroom:     r.homeroom,
+        specials:     r.specials || r.subject || '',
+        subject:      r.subject || r.specials || '',
+        date:         r.incident_date || (r.created_at || '').slice(0, 10),
+        time:         r.incident_time || (r.created_at || '').slice(11, 16),
+        incident_date: r.incident_date || (r.created_at || '').slice(0, 10),
+        incident_time: r.incident_time || (r.created_at || '').slice(11, 16),
+        created_at:   r.created_at,
+        behaviors:    r.behaviors || [],
+        color_chart:  r.color_chart,
+        home_contact: r.home_contact,
+        notes:        r.notes || '',
+        submitted_by: r.submitted_by || ''
+      };
+    });
+
+    var incidentIds = new Set(incidentRows.map(function(r){ return r.id; }));
+
+    transitionRows
+      .filter(function(t){
+        if(t.incident_id && incidentIds.has(t.incident_id)) return false;
+        if(t.to_color === 'Green' && !t.needs_documentation) return false;
+        return true;
+      })
+      .forEach(function(t){
+        var durationMins = null;
+        if(t.resolved_at && t.created_at){
+          durationMins = Math.round((new Date(t.resolved_at) - new Date(t.created_at)) / 60000);
+        }
+        unified.push({
+          _type:        'transition',
+          id:           'ct-' + t.id,
+          student:      t.student,
+          homeroom:     t.homeroom,
+          specials:     t.specials || '',
+          subject:      t.specials || '',
+          date:         t.incident_date || (t.created_at || '').slice(0, 10),
+          time:         (t.created_at || '').slice(11, 16),
+          incident_date: t.incident_date || (t.created_at || '').slice(0, 10),
+          incident_time: (t.created_at || '').slice(11, 16),
+          created_at:   t.created_at,
+          from_color:   t.from_color || 'Green',
+          to_color:     t.to_color,
+          resolved_at:  t.resolved_at,
+          duration_mins: durationMins,
+          behaviors:    [],
+          color_chart:  false,
+          home_contact: false,
+          notes:        t.notes || '',
+          submitted_by: t.submitted_by || '',
+          needs_documentation: t.needs_documentation
+        });
+      });
+
+    unified.sort(function(a, b){
+      var da = new Date(a.created_at || a.date), db = new Date(b.created_at || b.date);
+      return db - da;
+    });
+
+    if(cb) cb(null, unified);
+  }
+
+  authedFetch('/rest/v1/incidents?select=*&student=eq.' +
+    encodeURIComponent(name) + '&order=incident_date.desc,created_at.desc&limit=200')
+    .then(function(r){ return r.json(); })
+    .then(function(rows){ incidentRows = Array.isArray(rows) ? rows : []; incidentsDone = true; merge(); })
+    .catch(function(e){ err1 = e; incidentsDone = true; merge(); });
+
+  authedFetch('/rest/v1/color_transitions?select=*&student=eq.' +
+    encodeURIComponent(name) + '&order=created_at.desc&limit=200')
+    .then(function(r){ return r.json(); })
+    .then(function(rows){ transitionRows = Array.isArray(rows) ? rows : []; transitionsDone = true; merge(); })
+    .catch(function(e){ err2 = e; transitionsDone = true; merge(); });
 }
 
 // ── RENDER INCIDENT LOG LIST (reusable) ──
 function renderIncidentList(rows, container, onAfterEdit){
   if(!rows||!rows.length){
-    container.innerHTML=emptyState('No incidents on record', 'This scholar has no logged specials incidents.');
+    container.innerHTML=emptyState('No behavior records', 'This scholar has no logged specials behavior records.');
     return;
   }
   // group by date
   var grouped={};
   rows.forEach(function(r){
-    var k=r.incident_date||r.created_at.slice(0,10)||'Unknown';
+    var k=r.incident_date||r.date||(r.created_at||'').slice(0,10)||'Unknown';
     if(!grouped[k])grouped[k]=[];
     grouped[k].push(r);
   });
@@ -3361,6 +3445,26 @@ function renderIncidentList(rows, container, onAfterEdit){
     var pretty=(function(){try{var dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}catch(e){return d;}})();
     return '<div class="date-grp-hdr">'+pretty+'</div>'+
       grouped[d].map(function(r){
+        if(r._type === 'transition'){
+          return '<div class="inc-row" style="border-left:3px solid ' + colorFill(r.to_color) + ';padding:10px 12px;margin-bottom:8px;border-radius:0 8px 8px 0;background:var(--panel)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+              '<div style="font-size:12px;font-weight:600;color:var(--text)">' +
+                escHtml(r.from_color) + ' \u2192 ' +
+                '<span style="color:' + colorFill(r.to_color) + '">' + escHtml(r.to_color) + '</span>' +
+              '</div>' +
+              '<div style="font-size:11px;color:var(--text3)">' + escHtml(r.specials) + ' \u00B7 ' + escHtml(r.date) + '</div>' +
+            '</div>' +
+            (r.duration_mins !== null
+              ? '<div style="font-size:11px;color:var(--text3);margin-bottom:3px">Duration: ' + r.duration_mins + ' min</div>'
+              : '') +
+            (r.notes
+              ? '<div style="font-size:11px;color:var(--text2)">' + escHtml(r.notes) + '</div>'
+              : '') +
+            (r.needs_documentation
+              ? '<div style="font-size:10px;color:#E87D2B;margin-top:4px;font-weight:600">Needs documentation</div>'
+              : '') +
+          '</div>';
+        }
         var uid='db-'+r.id;
         var behs=r.behaviors||[];
         var hasNotes=r.notes&&r.notes.trim().length>0;
@@ -3371,7 +3475,7 @@ function renderIncidentList(rows, container, onAfterEdit){
             '<div class="log-name">'+stuNameLink(r.student||'—')+submitter+
               '<span class="log-chevron" id="chev-'+uid+'">▾</span>'+
             '</div>'+
-            '<div class="log-time">'+(r.incident_time||r.created_at.slice(11,16))+'</div>'+
+            '<div class="log-time">'+(r.incident_time||r.time||(r.created_at||'').slice(11,16))+'</div>'+
           '</div>'+
           '<div class="log-tags">'+
             '<span class="tag blue">'+escHtml(r.specials||'—')+'</span>'+
@@ -3416,7 +3520,7 @@ function renderIncidentList(rows, container, onAfterEdit){
       if(!row)return;
       // convert DB row to log-like object
       var logObj={dbId:row.id,studentName:row.student,homeroom:row.homeroom,specials:row.subject||row.specials,subject:row.subject||row.specials,
-        behaviors:row.behaviors||[],date:row.incident_date,time:row.incident_time,
+        behaviors:row.behaviors||[],date:row.incident_date||row.date,time:row.incident_time||row.time,
         colorChart:row.color_chart,homeContact:row.home_contact,notes:row.notes||'',fromDb:true};
       // open edit sheet using existing openEditSheet logic
       EDIT_STATE={uid:'db-'+row.id,dbId:row.id,allLogs:[logObj],onAfterEdit:onAfterEdit||null};
@@ -4446,7 +4550,7 @@ export {
   initLogin, fetchRole,
   authedFetch, authedInsert, authedSelect,
   fetchLiveData, buildLiveStats, fetchClassIncidents, fetchStudentIncidents, renderIncidentList,
-  drawLine, drawBar, wireChartTooltip, pb,
+  drawLine, drawBar, wireChartTooltip, pb, subjectBarColor,
   wireHeatCard, buildAcc, handleAccClick,
   openEditSheet, closeEditSheet, populateEditSheet, openDelConfirm, closeDelConfirm,
   renderStep, goTeacher, showPane, closeSheet, renderHistory, fetchMyLogs,
