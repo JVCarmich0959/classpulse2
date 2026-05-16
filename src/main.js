@@ -814,12 +814,13 @@ function updateTeacherNav(){
 
 function goAdmin(){updateUserDisplay();showScreen('S-admin');STATE.adminTab='overview';document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='overview');});startNotifPolling();renderAdmin();updateLogBadge();maybeInitProfileDropdown();}
 function showPane(pane){
-  el('T-log').style.display=pane==='log'?'flex':'none';
-  el('T-hist').style.display=pane==='hist'?'flex':'none';
-  el('TN-log').className='ni'+(pane==='log'?' on':'');
-  var tnQc=el('TN-qc');if(tnQc)tnQc.className='ni';
-  el('TN-hist').className='ni'+(pane==='hist'?' on':'');
-  if(pane==='hist')renderHistory();
+  el('T-log').style.display  = pane==='log'  ? 'flex' : 'none';
+  el('T-hist').style.display = pane==='hist' ? 'flex' : 'none';
+  el('TN-log').className  = 'ni' + (pane==='log'  ? ' on' : '');
+  el('TN-hist').className = 'ni' + (pane==='hist' ? ' on' : '');
+  var tnQc = el('TN-qc');
+  if (tnQc) tnQc.className = 'ni'; // always deactivate QC when switching panes
+  if (pane==='hist') renderHistory();
 }
 
 // ── STEP FORM ──
@@ -1384,17 +1385,31 @@ function logQCColor(toColor){
   showToast(studentName.split(' ')[0] + ' \u2192 ' + toColor, toColor === 'Green' ? 'success' : 'info', 2000);
 
   var today = todayStr();
+  var autoNote = null;
+  var resolvedAt = null;
+  if (toColor === 'Green') {
+    var now = new Date();
+    var timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    autoNote = 'Returned to Green at ' + timeStr + '.' +
+      (fromColor && fromColor !== 'Green'
+        ? ' De-escalated from ' + fromColor + ' during ' + QC_STATE.specials + '.'
+        : '');
+    resolvedAt = now.toISOString();
+  }
+
   var transition = {
-    student: studentName,
-    homeroom: student ? student.homeroom : '',
-    specials: QC_STATE.specials,
-    from_color: fromColor,
-    to_color: toColor,
-    incident_date: today,
+    student:             studentName,
+    homeroom:            student ? student.homeroom : '',
+    specials:            QC_STATE.specials,
+    from_color:          fromColor,
+    to_color:            toColor,
+    incident_date:       today,
+    notes:               autoNote,
+    resolved_at:         resolvedAt,
     needs_documentation: toColor !== 'Green',
-    submitted_by: SESSION.email || 'unknown',
-    school_year: NOTIF_SCHOOL_YEAR,
-    school_id: NOTIF_SCHOOL_ID
+    submitted_by:        SESSION.email || 'unknown',
+    school_year:         NOTIF_SCHOOL_YEAR,
+    school_id:           NOTIF_SCHOOL_ID
   };
 
   authedFetch('/rest/v1/color_transitions', {
@@ -1408,6 +1423,32 @@ function logQCColor(toColor){
     .then(function(rows){
       if(rows && rows[0]){
         QC_STATE.transitions.push(rows[0]);
+        // When returning to Green, stamp resolved_at on the most recent
+        // open (unresolved, non-green) transition for this student today
+        if (toColor === 'Green') {
+          var priorOpen = null;
+          var priorIdx  = -1;
+          QC_STATE.transitions.forEach(function(t, idx) {
+            if (t.student === studentName &&
+                t.to_color !== 'Green' &&
+                !t.resolved_at) {
+              priorOpen = t;
+              priorIdx  = idx;
+            }
+          });
+          if (priorOpen && priorOpen.id) {
+            var resolveTs = new Date().toISOString();
+            authedFetch('/rest/v1/color_transitions?id=eq.' + priorOpen.id, {
+              method: 'PATCH',
+              headers: { 'Prefer': 'return=minimal' },
+              body: JSON.stringify({ resolved_at: resolveTs })
+            }).then(function() {
+              if (priorIdx !== -1) QC_STATE.transitions[priorIdx].resolved_at = resolveTs;
+            }).catch(function(err) {
+              console.warn('Could not close prior transition', err);
+            });
+          }
+        }
         updatePendingDocBadge();
         renderPendingDocQueue();
         if(toColor === 'Red'){
@@ -3244,10 +3285,23 @@ var bal=el('btn-a-log');        if(bal) bal.addEventListener('click',goTeacher);
 var anDash=el('AN-dash');       if(anDash) anDash.addEventListener('click',function(){ if(SESSION.role!=='admin') return; goAdmin(); });
 el('btn-t-switch').addEventListener('click',function(){ if(SESSION.role==='admin') goAdmin(); });
 el('btn-th-switch').addEventListener('click',function(){ if(SESSION.role==='admin') goAdmin(); });
-el('TN-log').addEventListener('click',function(){showPane('log');});
+el('TN-log').addEventListener('click',function(){
+  if (STATE.currentScreen !== 'S-teacher') {
+    goTeacher();
+  } else {
+    showPane('log');
+  }
+});
 var tnQc = el('TN-qc');
 if(tnQc) tnQc.addEventListener('click', goQuickColor);
-el('TN-hist').addEventListener('click',function(){showPane('hist');});
+el('TN-hist').addEventListener('click',function(){
+  if (STATE.currentScreen !== 'S-teacher') {
+    showScreen('S-teacher');
+    showPane('hist');
+  } else {
+    showPane('hist');
+  }
+});
 el('T-overlay').addEventListener('click',closeSheet);
 el('btn-log-another').addEventListener('click',closeSheet);
 el('AN-classes').addEventListener('click',function(){ if(SESSION.role!=='admin') return; STATE.clsFilter='all';showScreen('S-classes');renderClsExplorer(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);});
