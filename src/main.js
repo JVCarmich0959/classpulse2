@@ -682,6 +682,7 @@ function initLogin(){
         if(stopEeg) stopEeg();
         if(err || !role){ showScreen('S-login'); return; }
         SESSION.role = role;
+        maybeInitQCPicker();
         maybeInitShortcuts();
         if(role === 'admin'){ goAdmin(); } else { goTeacher(); }
       });
@@ -705,6 +706,7 @@ function initLogin(){
         updateUserDisplay();
         fetchRole(SESSION.userId, function(err, role){
           SESSION.role = role;
+          maybeInitQCPicker();
           maybeInitShortcuts();
           if(role === 'admin'){ goAdmin(); } else { goTeacher(); }
         });
@@ -777,6 +779,7 @@ function updateNavActive(screenId){
     'S-detail':'AN-classes',
     'S-student':'AN-classes',
     'S-teacher':'TN-log',
+    'S-quick-color':'TN-qc',
     'S-log':'TN-log'
   };
   document.querySelectorAll('.ni').forEach(function(b){
@@ -785,7 +788,7 @@ function updateNavActive(screenId){
   var adminNav  = document.getElementById('admin-bnav');
   var teacherNav = document.getElementById('teacher-bnav');
   var isAdminScreen   = ['S-admin','S-classes','S-detail','S-student'].indexOf(screenId) !== -1;
-  var isTeacherScreen = ['S-teacher','S-log'].indexOf(screenId) !== -1;
+  var isTeacherScreen = ['S-teacher','S-log','S-quick-color'].indexOf(screenId) !== -1;
   if(adminNav)   adminNav.style.display   = isAdminScreen   ? 'flex' : 'none';
   if(teacherNav) teacherNav.style.display = isTeacherScreen ? 'flex' : 'none';
   var activeId=navMap[screenId];
@@ -802,7 +805,7 @@ function showScreen(id,back){
   });
   updateNavActive(id);
 }
-function goTeacher(){STATE.entry=freshEntry();STATE.step=0;STATE.myDbLoaded=false;STATE.myDbLogs=[];updateUserDisplay();showScreen('S-teacher');showPane('log');renderStep();updateTeacherNav();updateLogBadge();}
+function goTeacher(){STATE.entry=freshEntry();STATE.step=0;STATE.myDbLoaded=false;STATE.myDbLogs=[];updateUserDisplay();showScreen('S-teacher');showPane('log');renderStep();updateTeacherNav();updateLogBadge();renderPendingDocQueue();}
 
 function updateTeacherNav(){
   var sw = el('btn-t-switch');
@@ -814,6 +817,7 @@ function showPane(pane){
   el('T-log').style.display=pane==='log'?'flex':'none';
   el('T-hist').style.display=pane==='hist'?'flex':'none';
   el('TN-log').className='ni'+(pane==='log'?' on':'');
+  var tnQc=el('TN-qc');if(tnQc)tnQc.className='ni';
   el('TN-hist').className='ni'+(pane==='hist'?' on':'');
   if(pane==='hist')renderHistory();
 }
@@ -1168,7 +1172,9 @@ function attachSL(){
           specials:e.specials,
           from_color:'Green',
           to_color:e.colorTransition,
+          incident_date:e.date||todayStr(),
           notes:e.notes||'',
+          needs_documentation:false,
           resolved_at:e.colorResolved?new Date().toISOString():null,
           submitted_by:SESSION.email||'unknown',
           school_year:NOTIF_SCHOOL_YEAR,
@@ -1194,6 +1200,398 @@ function attachSL(){
   });
 }
 function closeSheet(){el('T-sheet').classList.remove('show');el('T-overlay').classList.remove('show');STATE.entry=freshEntry();STATE.step=0;renderStep();}
+
+// ── QUICK COLOR ──
+var QC_STATE = {
+  specials: null,
+  roster: [],
+  transitions: [],
+  activeStudent: null,
+  activeTransitionId: null,
+};
+
+
+function goQuickColor(){
+  showScreen('S-quick-color');
+  updateNavActive('S-quick-color');
+  renderQCClassPicker();
+  renderPendingDocQueue();
+}
+
+function renderQCClassPicker(){
+  var wrap = el('qc-class-chips');
+  if(!wrap) return;
+  var classes = getSubjects().filter(function(c){ return c && c !== 'Support'; });
+  wrap.innerHTML = classes.map(function(c){
+    var on = QC_STATE.specials === c;
+    return '<button class="chip' + (on ? ' on' : '') + '" data-qc-class="' + escAttr(c) + '" ' +
+      'style="font-size:12px;padding:6px 14px">' + escHtml(c) + '</button>';
+  }).join('');
+  wrap.querySelectorAll('[data-qc-class]').forEach(function(btn){
+    btn.addEventListener('click', function(){ selectQCClass(btn.dataset.qcClass); });
+  });
+}
+
+function selectQCClass(specials){
+  QC_STATE.specials = specials;
+  var sub = el('qc-sub');
+  if(sub) sub.textContent = specials + ' \u00B7 ' + todayStr();
+  renderQCClassPicker();
+  loadQCRoster();
+}
+
+function loadQCRoster(){
+  var body = el('qc-roster-body');
+  if(!body) return;
+  if(!QC_STATE.specials){
+    body.innerHTML = emptyState('Select a class', 'Choose the class you are currently teaching.');
+    return;
+  }
+  body.innerHTML = skeletonRows(8);
+
+  var today = todayStr();
+  authedFetch('/rest/v1/color_transitions?specials=eq.' +
+    encodeURIComponent(QC_STATE.specials) +
+    '&incident_date=eq.' + today +
+    '&select=id,student,to_color,created_at,needs_documentation&order=created_at.asc')
+    .then(function(r){ return r.json(); })
+    .then(function(transitions){
+      var colorMap = {};
+      (Array.isArray(transitions) ? transitions : []).forEach(function(t){
+        colorMap[t.student] = t.to_color;
+      });
+      QC_STATE.transitions = Array.isArray(transitions) ? transitions : [];
+      updatePendingDocBadge();
+
+      authedFetch('/rest/v1/students?active=eq.true&select=student_name,homeroom&order=last_name.asc,first_name.asc')
+        .then(function(r){ return r.json(); })
+        .then(function(students){
+          QC_STATE.roster = (Array.isArray(students) ? students : []).map(function(s){
+            return {
+              name: s.student_name,
+              homeroom: s.homeroom,
+              currentColor: colorMap[s.student_name] || 'Green'
+            };
+          });
+          renderQCRoster();
+        });
+    })
+    .catch(function(){
+      if(body) body.innerHTML = emptyState('Could not load roster', 'Check your connection and try again.');
+    });
+}
+
+function renderQCRoster(){
+  var body = el('qc-roster-body');
+  if(!body || !QC_STATE.roster.length){
+    if(body) body.innerHTML = emptyState('No students found', 'Select a class above to load the roster.');
+    return;
+  }
+
+  var colorHex = { Green: '#1e7e44', Yellow: '#BFA95F', Orange: '#d4622a', Red: '#c0392b' };
+
+  var searchBar = '<div style="padding:10px 0 12px">' +
+    '<input id="qc-search" type="text" placeholder="Search students..." autocomplete="off" autocorrect="off" ' +
+    'style="width:100%;padding:11px 14px;border-radius:8px;border:1.5px solid var(--border);font-size:14px;background:var(--panel);color:var(--text);box-sizing:border-box">' +
+    '</div>';
+
+  var sorted = QC_STATE.roster.slice().sort(function(a, b){
+    var aEsc = a.currentColor !== 'Green' ? 0 : 1;
+    var bEsc = b.currentColor !== 'Green' ? 0 : 1;
+    if(aEsc !== bEsc) return aEsc - bEsc;
+    return a.name.localeCompare(b.name);
+  });
+
+  var rows = sorted.map(function(s){
+    var dot = colorHex[s.currentColor] || colorHex.Green;
+    var esc = s.currentColor !== 'Green';
+    return '<div class="li qc-row" data-stu="' + escAttr(s.name) + '" ' +
+      'style="padding:12px 8px;display:flex;align-items:center;gap:12px;cursor:pointer;border-bottom:1px solid var(--border)">' +
+      '<div style="width:14px;height:14px;border-radius:50%;background:' + dot + ';flex-shrink:0;transition:background 0.2s ease"></div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:14px;font-weight:' + (esc ? '700' : '500') + ';color:' + (esc ? 'var(--indigo)' : 'var(--text2)') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(s.name) + '</div>' +
+        '<div style="font-size:11px;color:var(--text3)">' + escHtml(s.homeroom) + '</div>' +
+      '</div>' +
+      '<div style="font-size:11px;font-weight:600;color:' + dot + ';flex-shrink:0">' + escHtml(s.currentColor) + '</div>' +
+    '</div>';
+  }).join('');
+
+  body.innerHTML = searchBar + '<div id="qc-list">' + rows + '</div>';
+  body.querySelectorAll('.qc-row').forEach(function(row){
+    row.addEventListener('click', function(){ openQCPicker(row.dataset.stu || ''); });
+  });
+
+  var si = el('qc-search');
+  if(si){
+    si.addEventListener('input', function(){
+      var q = this.value.toLowerCase().trim();
+      body.querySelectorAll('.qc-row').forEach(function(row){
+        row.style.display = (!q || (row.dataset.stu || '').toLowerCase().indexOf(q) !== -1) ? '' : 'none';
+      });
+    });
+    if(window.innerWidth > 768) si.focus();
+  }
+
+  animateListIn(body);
+}
+
+function openQCPicker(studentName){
+  QC_STATE.activeStudent = studentName;
+  var student = QC_STATE.roster.find(function(s){ return s.name === studentName; });
+  var currentColor = student ? student.currentColor : 'Green';
+
+  var nameEl = el('qc-picker-name');
+  var curEl = el('qc-picker-current');
+  if(nameEl) nameEl.textContent = studentName;
+  if(curEl) curEl.textContent = 'Currently on ' + currentColor;
+
+  var colorHex = { Yellow: '#BFA95F', Orange: '#d4622a', Red: '#c0392b', Green: '#1e7e44' };
+  document.querySelectorAll('.qc-color-btn').forEach(function(btn){
+    var c = btn.dataset.qc;
+    var hex = colorHex[c];
+    var isCurrent = c === currentColor;
+    btn.style.background = isCurrent ? hex : 'none';
+    btn.style.color = isCurrent ? '#ffffff' : hex;
+    btn.style.opacity = isCurrent ? '0.45' : '1';
+    btn.disabled = isCurrent;
+  });
+
+  var picker = el('qc-picker');
+  var overlay = el('qc-picker-overlay');
+  if(picker) picker.style.display = 'block';
+  if(overlay) overlay.style.display = 'block';
+}
+
+function closeQCPicker(){
+  var picker = el('qc-picker');
+  var overlay = el('qc-picker-overlay');
+  if(picker) picker.style.display = 'none';
+  if(overlay) overlay.style.display = 'none';
+  QC_STATE.activeStudent = null;
+}
+
+function logQCColor(toColor){
+  var studentName = QC_STATE.activeStudent;
+  if(!studentName || !QC_STATE.specials) return;
+
+  var student = QC_STATE.roster.find(function(s){ return s.name === studentName; });
+  var fromColor = student ? student.currentColor : 'Green';
+  closeQCPicker();
+  if(toColor === fromColor) return;
+
+  if(student) student.currentColor = toColor;
+  renderQCRoster();
+  showToast(studentName.split(' ')[0] + ' \u2192 ' + toColor, toColor === 'Green' ? 'success' : 'info', 2000);
+
+  var today = todayStr();
+  var transition = {
+    student: studentName,
+    homeroom: student ? student.homeroom : '',
+    specials: QC_STATE.specials,
+    from_color: fromColor,
+    to_color: toColor,
+    incident_date: today,
+    needs_documentation: toColor !== 'Green',
+    submitted_by: SESSION.email || 'unknown',
+    school_year: NOTIF_SCHOOL_YEAR,
+    school_id: NOTIF_SCHOOL_ID
+  };
+
+  authedFetch('/rest/v1/color_transitions', {
+    method: 'POST',
+    headers: { 'Prefer': 'return=representation' },
+    body: JSON.stringify(transition)
+  }).then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(rows){
+      if(rows && rows[0]){
+        QC_STATE.transitions.push(rows[0]);
+        updatePendingDocBadge();
+        renderPendingDocQueue();
+        if(toColor === 'Red'){
+          checkAndNotify({
+            studentName: studentName,
+            homeroom: student ? student.homeroom : '',
+            specials: QC_STATE.specials,
+            behaviors: [],
+            colorTransition: 'Red'
+          }, rows[0].id);
+        }
+      }
+    })
+    .catch(function(){
+      showToast('Could not save color change', 'error');
+      if(student) student.currentColor = fromColor;
+      renderQCRoster();
+    });
+}
+
+function updatePendingDocBadge(count){
+  var pending = typeof count === 'number' ? count : QC_STATE.transitions.filter(function(t){
+    return t.needs_documentation;
+  }).length;
+  var badge = el('qc-doc-badge');
+  if(badge){
+    badge.style.display = pending > 0 ? 'inline-flex' : 'none';
+    badge.textContent = String(pending);
+  }
+}
+
+// ── PENDING DOCUMENTATION QUEUE ──
+function renderPendingDocQueue(){
+  var wrap = el('pending-doc-wrap');
+  if(!wrap || !SESSION.email) return;
+
+  var today = todayStr();
+  authedFetch('/rest/v1/color_transitions?needs_documentation=eq.true' +
+    '&submitted_by=eq.' + encodeURIComponent(SESSION.email) +
+    '&incident_date=eq.' + today +
+    '&select=id,student,specials,to_color,from_color,created_at,homeroom' +
+    '&order=created_at.asc')
+    .then(function(r){ return r.json(); })
+    .then(function(rows){
+      rows = Array.isArray(rows) ? rows : [];
+      updatePendingDocBadge(rows.length);
+      if(!rows.length){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+
+      var colorHex = { Green: '#1e7e44', Yellow: '#BFA95F', Orange: '#d4622a', Red: '#c0392b' };
+      wrap.style.display = 'block';
+      wrap.innerHTML =
+        '<div class="sec" style="margin-top:16px">' +
+          'Needs documentation' +
+          '<span style="font-size:9px;font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;margin-left:6px">' +
+            rows.length + ' transition' + (rows.length > 1 ? 's' : '') +
+          '</span>' +
+        '</div>' +
+        '<div style="background:var(--gold-lt);border-radius:8px;overflow:hidden;margin-top:8px">' +
+        rows.map(function(t){
+          var dot = colorHex[t.to_color] || '#98A2AD';
+          var time = t.created_at
+            ? new Date(t.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+            : '';
+          return '<div class="li qc-doc-row" data-transition-id="' + escAttr(t.id) + '" ' +
+            'style="padding:11px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid rgba(191,169,95,0.2)">' +
+            '<div style="width:10px;height:10px;border-radius:50%;background:' + dot + ';flex-shrink:0"></div>' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="font-size:13px;font-weight:600;color:var(--indigo)">' + escHtml(t.student) + '</div>' +
+              '<div style="font-size:11px;color:var(--text3)">' + escHtml(t.specials) + ' \u00B7 ' + escHtml(t.to_color) + ' \u00B7 ' + escHtml(time) + '</div>' +
+            '</div>' +
+            '<div style="font-size:11px;color:var(--gold-dim);font-weight:600;flex-shrink:0">Add note &#8250;</div>' +
+          '</div>';
+        }).join('') +
+        '</div>';
+      wrap.querySelectorAll('.qc-doc-row').forEach(function(row){
+        row.addEventListener('click', function(){ openQCDocSheet(row.dataset.transitionId); });
+      });
+    })
+    .catch(function(){ wrap.style.display = 'none'; });
+}
+
+// ── RETROACTIVE DOC SHEET ──
+function openQCDocSheet(transitionId){
+  authedFetch('/rest/v1/color_transitions?id=eq.' + encodeURIComponent(transitionId) + '&select=*&limit=1')
+    .then(function(r){ return r.json(); })
+    .then(function(rows){
+      if(!rows || !rows.length) return;
+      var t = rows[0];
+      var time = t.created_at
+        ? new Date(t.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        : '';
+      var colorHex = { Green: '#1e7e44', Yellow: '#BFA95F', Orange: '#d4622a', Red: '#c0392b' };
+
+      QC_STATE.activeTransitionId = transitionId;
+
+      var dot = el('qcd-color-dot');
+      var stu = el('qcd-student');
+      var meta = el('qcd-meta');
+      var notes = el('qcd-notes');
+      var promote = el('qcd-promote');
+
+      if(dot) dot.style.background = colorHex[t.to_color] || '#98A2AD';
+      if(stu) stu.textContent = t.student;
+      if(meta) meta.textContent = t.specials + ' \u00B7 moved to ' + t.to_color + ' at ' + time;
+      if(notes) notes.value = t.notes || '';
+      if(promote){
+        promote.dataset.student = t.student;
+        promote.dataset.homeroom = t.homeroom || '';
+        promote.dataset.specials = t.specials;
+        promote.dataset.color = t.to_color;
+      }
+
+      var sheet = el('qc-doc-sheet');
+      var overlay = el('qcd-overlay');
+      if(sheet) sheet.style.display = 'block';
+      if(overlay) overlay.style.display = 'block';
+      if(notes) setTimeout(function(){ notes.focus(); }, 100);
+    })
+    .catch(function(){ showToast('Could not load transition', 'error'); });
+}
+
+function closeQCDocSheet(){
+  var sheet = el('qc-doc-sheet');
+  var overlay = el('qcd-overlay');
+  if(sheet) sheet.style.display = 'none';
+  if(overlay) overlay.style.display = 'none';
+  QC_STATE.activeTransitionId = null;
+}
+
+function saveQCDoc(){
+  var notes = (el('qcd-notes') && el('qcd-notes').value || '').trim();
+  if(!notes){ showToast('Write a note before saving', 'error'); return; }
+  var id = QC_STATE.activeTransitionId;
+  if(!id) return;
+
+  authedFetch('/rest/v1/color_transitions?id=eq.' + encodeURIComponent(id), {
+    method: 'PATCH',
+    headers: { 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ notes: notes, needs_documentation: false })
+  }).then(function(r){
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    QC_STATE.transitions.forEach(function(t){
+      if(String(t.id) === String(id)) t.needs_documentation = false;
+    });
+    closeQCDocSheet();
+    showToast('Note saved');
+    renderPendingDocQueue();
+  }).catch(function(){ showToast('Could not save note', 'error'); });
+}
+
+function promoteToIncident(){
+  var btn = el('qcd-promote');
+  if(!btn) return;
+  var notes = (el('qcd-notes') && el('qcd-notes').value || '').trim();
+
+  closeQCDocSheet();
+  goTeacher();
+
+  STATE.entry = freshEntry();
+  STATE.entry.studentName = btn.dataset.student || '';
+  STATE.entry.homeroom = btn.dataset.homeroom || '';
+  STATE.entry.specials = btn.dataset.specials || '';
+  STATE.entry.colorChart = true;
+  STATE.entry.colorTransition = btn.dataset.color || '';
+  STATE.entry.notes = notes;
+  STATE.step = 3;
+  renderStep();
+}
+
+// ── INIT QC PICKER EVENTS (call once) ──
+var _qcPickerInited = false;
+function maybeInitQCPicker(){
+  if(_qcPickerInited) return;
+  _qcPickerInited = true;
+  document.querySelectorAll('.qc-color-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){ logQCColor(btn.dataset.qc); });
+  });
+  var cancel = el('qc-picker-cancel');
+  if(cancel) cancel.addEventListener('click', closeQCPicker);
+  var pickerOverlay = el('qc-picker-overlay');
+  if(pickerOverlay) pickerOverlay.addEventListener('click', closeQCPicker);
+  var qcdOverlay = el('qcd-overlay');
+  if(qcdOverlay) qcdOverlay.addEventListener('click', closeQCDocSheet);
+}
 
 
 // ── USER DISPLAY ──
@@ -2847,6 +3245,8 @@ var anDash=el('AN-dash');       if(anDash) anDash.addEventListener('click',funct
 el('btn-t-switch').addEventListener('click',function(){ if(SESSION.role==='admin') goAdmin(); });
 el('btn-th-switch').addEventListener('click',function(){ if(SESSION.role==='admin') goAdmin(); });
 el('TN-log').addEventListener('click',function(){showPane('log');});
+var tnQc = el('TN-qc');
+if(tnQc) tnQc.addEventListener('click', goQuickColor);
 el('TN-hist').addEventListener('click',function(){showPane('hist');});
 el('T-overlay').addEventListener('click',closeSheet);
 el('btn-log-another').addEventListener('click',closeSheet);
@@ -3088,6 +3488,7 @@ el('setup-submit').addEventListener('click', function(){
     SESSION.email = data.user.email;
     fetchRole(data.user.id, function(err, role){
       SESSION.role = role;
+      maybeInitQCPicker();
       maybeInitShortcuts();
       if(role==='admin') goAdmin(); else goTeacher();
     });
@@ -3096,6 +3497,12 @@ el('setup-submit').addEventListener('click', function(){
     btn.textContent='Activate account'; btn.disabled=false;
   });
 });
+
+if(typeof window !== 'undefined'){
+  window.saveQCDoc = saveQCDoc;
+  window.promoteToIncident = promoteToIncident;
+  window.closeQCDocSheet = closeQCDocSheet;
+}
 
 initPwa();
 initFreshness();
@@ -3115,5 +3522,8 @@ export {
   goAdmin, renderAdmin, setTab, bOV, bAL, bTM, bST, bCL,
   renderClsExplorer, filterClasses, openDet, showScreen, escHtml,
   openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen, displayBehavior,
-  skeletonRows, skeletonKpis, animateListIn, showToast, emptyState
+  skeletonRows, skeletonKpis, animateListIn, showToast, emptyState,
+  goQuickColor, renderQCClassPicker, selectQCClass, loadQCRoster, renderQCRoster,
+  openQCPicker, closeQCPicker, logQCColor, updatePendingDocBadge, renderPendingDocQueue,
+  openQCDocSheet, closeQCDocSheet, saveQCDoc, promoteToIncident, maybeInitQCPicker
 };

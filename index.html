@@ -97,6 +97,7 @@
       <div class="sdots" id="step-dots"></div>
     </div>
     <div class="scroll" id="step-body" style="padding-bottom:calc(var(--sb) + 20px)"></div>
+    <div id="pending-doc-wrap" style="display:none;padding:0 16px 8px"></div>
   </div>
   <div id="T-hist" style="display:none;flex-direction:column;flex:1;overflow:hidden">
     <div class="topbar"><div><h1>My Logs</h1><div class="sub" id="hist-sub">This session</div></div><div style="display:flex;gap:6px"><button class="pill" id="btn-th-switch">Admin</button><button class="pill" id="btn-th-signout" style="color:var(--red);border-color:rgba(192,57,43,.3)">Sign out</button></div></div>
@@ -110,6 +111,54 @@
     <button class="btn-p" id="btn-log-another">Log another incident</button>
   </div>
 </div>
+<div id="S-quick-color" class="screen hidden">
+  <div class="st"></div>
+  <div class="topbar">
+    <div>
+      <h1>Quick Color</h1>
+      <div class="sub" id="qc-sub">Select a class to begin</div>
+    </div>
+  </div>
+  <div style="padding:12px 16px 0">
+    <div class="sec">Current class</div>
+    <div id="qc-class-chips" style="display:flex;gap:8px;flex-wrap:wrap;padding-top:8px"></div>
+  </div>
+  <div id="qc-roster-wrap" style="padding:0 16px 90px;overflow-y:auto;flex:1">
+    <div id="qc-roster-body"></div>
+  </div>
+</div>
+
+<!-- Color picker bottom sheet -->
+<div id="qc-picker" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--border);border-radius:16px 16px 0 0;padding:20px 16px;z-index:300;box-shadow:0 -4px 24px rgba(39,26,112,0.15)">
+  <div id="qc-picker-name" style="font-size:16px;font-weight:700;color:var(--indigo);margin-bottom:4px"></div>
+  <div id="qc-picker-current" style="font-size:11px;color:var(--text3);margin-bottom:16px"></div>
+  <div style="display:flex;gap:10px;margin-bottom:14px">
+    <button class="qc-color-btn" data-qc="Yellow" style="flex:1;padding:14px 0;border-radius:10px;border:2px solid #BFA95F;background:none;font-size:13px;font-weight:700;color:#BFA95F;cursor:pointer;font-family:inherit;transition:all 0.15s ease">Yellow</button>
+    <button class="qc-color-btn" data-qc="Orange" style="flex:1;padding:14px 0;border-radius:10px;border:2px solid #d4622a;background:none;font-size:13px;font-weight:700;color:#d4622a;cursor:pointer;font-family:inherit;transition:all 0.15s ease">Orange</button>
+    <button class="qc-color-btn" data-qc="Red" style="flex:1;padding:14px 0;border-radius:10px;border:2px solid #c0392b;background:none;font-size:13px;font-weight:700;color:#c0392b;cursor:pointer;font-family:inherit;transition:all 0.15s ease">Red</button>
+    <button class="qc-color-btn" data-qc="Green" style="flex:1;padding:14px 0;border-radius:10px;border:2px solid #1e7e44;background:none;font-size:13px;font-weight:700;color:#1e7e44;cursor:pointer;font-family:inherit;transition:all 0.15s ease">Green</button>
+  </div>
+  <button id="qc-picker-cancel" style="width:100%;padding:13px;border-radius:8px;border:1px solid var(--border);background:none;font-size:13px;color:var(--text2);cursor:pointer;font-family:inherit">Cancel</button>
+</div>
+<div id="qc-picker-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:299"></div>
+
+<!-- Retroactive documentation sheet -->
+<div id="qc-doc-sheet" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--border);border-radius:16px 16px 0 0;padding:20px 16px;z-index:300;box-shadow:0 -4px 24px rgba(39,26,112,0.15)">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+    <div id="qcd-color-dot" style="width:14px;height:14px;border-radius:50%;flex-shrink:0"></div>
+    <div>
+      <div id="qcd-student" style="font-size:15px;font-weight:700;color:var(--indigo)"></div>
+      <div id="qcd-meta" style="font-size:11px;color:var(--text3);margin-top:2px"></div>
+    </div>
+  </div>
+  <textarea id="qcd-notes" placeholder="What happened? Antecedent, behavior, consequence..." style="width:100%;min-height:110px;font-size:14px;line-height:1.7;padding:10px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--panel);color:var(--text);box-sizing:border-box;resize:none;font-family:inherit"></textarea>
+  <div style="display:flex;gap:10px;margin-top:12px">
+    <button onclick="saveQCDoc()" style="flex:2;padding:13px;background:var(--indigo);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Save note</button>
+    <button id="qcd-promote" onclick="promoteToIncident()" style="flex:1;padding:13px;background:none;color:var(--indigo);border:1.5px solid var(--indigo);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Full incident</button>
+  </div>
+  <button onclick="closeQCDocSheet()" style="width:100%;margin-top:10px;padding:11px;border-radius:8px;border:1px solid var(--border);background:none;font-size:13px;color:var(--text2);cursor:pointer;font-family:inherit">Cancel</button>
+</div>
+<div id="qcd-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:299" onclick="closeQCDocSheet()"></div>
 
 <div id="S-admin" class="screen hidden">
   <div class="st"></div>
@@ -187,6 +236,7 @@
 
 <nav class="bnav" id="teacher-bnav" style="display:none">
   <button class="ni on" id="TN-log"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg><span>Log</span></button>
+  <button class="ni" id="TN-qc" style="position:relative"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg><span>Colors</span><span id="qc-doc-badge" style="display:none;position:absolute;top:2px;right:6px;background:#BFA95F;color:#271A70;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:14px;text-align:center;line-height:14px;pointer-events:none"></span></button>
   <button class="ni" id="TN-hist"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9" stroke-linecap="round"/></svg><span>My Logs</span></button>
 </nav>
 <nav class="bnav" id="admin-bnav" style="display:none">

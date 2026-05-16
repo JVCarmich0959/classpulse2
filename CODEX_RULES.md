@@ -155,3 +155,34 @@ When these tables exist, the scholar profile will show:
 This is the foundation for the parent-facing academic view and
 the teacher standards-gap analysis dashboard.
 Do not implement until data entry UI is approved.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QUICK COLOR FEATURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+S-quick-color is a 2-tap color logging screen for teachers mid-class.
+It does NOT require a full incident form.
+
+Flow: Select class → Tap student → Tap new color → Done.
+Transitions saved immediately with needs_documentation = true.
+Documentation added retroactively via pending queue on S-teacher.
+
+color_transitions.needs_documentation:
+  true  = transition logged, no narrative note yet
+  false = note added (retroactively or at time of logging)
+Green transitions always set needs_documentation = false (de-escalation,
+no formal documentation required).
+
+1st grade scheduling note: 1st grade students are logged by their
+block 1 specials teacher, NOT their homeroom. The specials field
+reflects the actual teacher they are with. Do not infer homeroom
+from specials for 1st grade.
+
+Do not run the needs_documentation migration again — it is already applied.
+
+CODEX_RULES compliance:
+
+No hardcoded data or stats
+No emoji in any UI string — use unicode escapes \u2192 for arrows, \u00B7 for dots
+No new files beyond what is specified above
+Grep before adding every function: QC_STATE, goQuickColor, renderQCClassPicker, selectQCClass, loadQCRoster, renderQCRoster, openQCPicker, closeQCPicker, logQCColor, updatePendingDocBadge, renderPendingDocQueue, openQCDocSheet, closeQCDocSheet, saveQCDoc, promoteToIncident, maybeInitQCPicker, _qcPickerInited
+npm run build must pass with zero errors before committing
