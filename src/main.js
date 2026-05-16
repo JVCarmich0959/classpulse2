@@ -312,6 +312,29 @@ var DET_LIVE = {
   homeroom:    null,
   running:     false
 };
+
+// ── SCHOOL-WIDE PHYSICS WIDGET ──
+var SW_PHYSICS = {
+  Green:  {spd:0.20,maxSpd:0.38,r:5,  wobble:0.010,fill:'#4ABFA3',glow:null,               trailA:0.08,trailL:6, bSpin:0.05},
+  Yellow: {spd:0.52,maxSpd:0.85,r:5,  wobble:0.038,fill:'#E8C547',glow:null,               trailA:0.12,trailL:9, bSpin:0.10},
+  Orange: {spd:1.05,maxSpd:1.65,r:6,  wobble:0.085,fill:'#E87D2B',glow:'rgba(232,125,43,0.13)',trailA:0.15,trailL:12,bSpin:0.24},
+  Red:    {spd:1.75,maxSpd:2.70,r:6,  wobble:0.165,fill:'#D63B3B',glow:'rgba(214,59,59,0.18)',trailA:0.19,trailL:15,bSpin:0.40}
+};
+
+var SW_GRADE_RING = {
+  K:'#8B7BE0','1':'#4ABFA3','2':'#E8C547','3':'#E87D2B','4':'#D63B3B','5':'#BFA95F'
+};
+
+var SW_STATE = {
+  allDots:      [],
+  visibleDots:  [],
+  activeGrade:  'all',
+  raf:          null,
+  channel:      null,
+  running:      false,
+  loading:      false,
+  tickLog:      []
+};
 function setStuPrevScreen(v){ STU_PREV_SCREEN=v||'S-detail'; }
 function getStuPrevScreen(){ return STU_PREV_SCREEN||'S-detail'; }
 function setDetPrevScreen(v){ DET_PREV_SCREEN=v||'S-classes'; }
@@ -354,6 +377,240 @@ function handleAccClick(tab,id){
   if(chevEl) chevEl.classList.toggle('open',!!ACC_STATE[key]);
 }
 if(typeof window!=='undefined') window.handleAccClick=handleAccClick;
+
+function initSchoolWide() {
+  if (SW_STATE.running || SW_STATE.loading) return;
+  var cv = document.getElementById('sw-canvas');
+  if (!cv) return;
+
+  SW_STATE.loading = true;
+
+  var W = cv.offsetWidth || 340;
+  var H = 320;
+  var today = todayStr();
+
+  authedFetch('/rest/v1/students?active=eq.true&select=student_name,homeroom,grade_code' +
+    '&grade_code=not.in.(EC)' +
+    '&school_year=eq.' + encodeURIComponent(NOTIF_SCHOOL_YEAR) +
+    '&order=grade_code.asc,last_name.asc,first_name.asc')
+    .then(function(r) { return r.json(); })
+    .then(function(students) {
+      students = Array.isArray(students) ? students : [];
+
+      return authedFetch('/rest/v1/color_transitions?incident_date=eq.' + encodeURIComponent(today) +
+        '&select=student,to_color,created_at&order=created_at.asc')
+        .then(function(r) { return r.json(); })
+        .then(function(transitions) {
+          var colorMap = {};
+          (Array.isArray(transitions) ? transitions : []).forEach(function(t) {
+            if (t && t.student && SW_PHYSICS[t.to_color]) colorMap[t.student] = t.to_color;
+          });
+
+          var cols = Math.max(1, Math.ceil(Math.sqrt(students.length * 1.5)));
+          var rows = Math.max(1, Math.ceil(students.length / cols));
+          var cellW = W / cols;
+          var cellH = H / rows;
+
+          SW_STATE.allDots = students.map(function(s, i) {
+            var col = i % cols, row = Math.floor(i / cols);
+            var cx = cellW * col + cellW / 2 + (Math.random() - .5) * cellW * .45;
+            var cy = cellH * row + cellH / 2 + (Math.random() - .5) * cellH * .45;
+            var color = colorMap[s.student_name] || 'Green';
+            var ph = SW_PHYSICS[color] || SW_PHYSICS.Green;
+            var angle = Math.random() * Math.PI * 2;
+            return {
+              name:     s.student_name,
+              first:    (s.student_name || '').split(' ')[0],
+              homeroom: s.homeroom || '',
+              grade:    s.grade_code || '',
+              color:    color,
+              x: Math.max(8, Math.min(W - 8, cx)),
+              y: Math.max(8, Math.min(H - 8, cy)),
+              vx: Math.cos(angle) * ph.spd,
+              vy: Math.sin(angle) * ph.spd,
+              pulse: 0,
+              trail: []
+            };
+          });
+
+          if (STATE.currentScreen !== 'S-admin' || STATE.adminTab !== 'overview' || !document.getElementById('sw-canvas')) {
+            SW_STATE.loading = false;
+            return;
+          }
+          swSetFilter(SW_STATE.activeGrade);
+          SW_STATE.loading = false;
+          SW_STATE.running = true;
+          if (!SW_STATE.raf) SW_STATE.raf = requestAnimationFrame(tickSchoolWide);
+          startSchoolWideChannel();
+        });
+    })
+    .catch(function(err) { SW_STATE.loading = false; console.warn('initSchoolWide failed', err); });
+}
+
+function swSetFilter(grade) {
+  SW_STATE.activeGrade = grade;
+  SW_STATE.visibleDots = grade === 'all'
+    ? SW_STATE.allDots
+    : SW_STATE.allDots.filter(function(d) { return d.grade === grade; });
+
+  document.querySelectorAll('.sw-grade-btn').forEach(function(btn) {
+    btn.classList.toggle('on', btn.dataset.grade === grade);
+  });
+
+  var countEl = document.getElementById('sw-shown-count');
+  if (countEl) countEl.textContent = SW_STATE.visibleDots.length;
+}
+
+function stopSchoolWide() {
+  SW_STATE.running = false;
+  SW_STATE.loading = false;
+  if (SW_STATE.raf) { cancelAnimationFrame(SW_STATE.raf); SW_STATE.raf = null; }
+  if (SW_STATE.channel) {
+    try { supabase.removeChannel(SW_STATE.channel); } catch(e) {}
+    SW_STATE.channel = null;
+  }
+  SW_STATE.allDots = [];
+  SW_STATE.visibleDots = [];
+  SW_STATE.tickLog = [];
+}
+
+function startSchoolWideChannel() {
+  if (SW_STATE.channel) return;
+  if (typeof supabase.setAuthToken === 'function') supabase.setAuthToken(SESSION.token);
+  SW_STATE.channel = supabase
+    .channel('sw-color-transitions')
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'color_transitions'
+    }, function(payload) {
+      var rec = payload.new;
+      if (!rec || !rec.student || !rec.to_color || !SW_PHYSICS[rec.to_color]) return;
+      var dot = null;
+      for (var i = 0; i < SW_STATE.allDots.length; i++) {
+        if (SW_STATE.allDots[i].name === rec.student) { dot = SW_STATE.allDots[i]; break; }
+      }
+      if (!dot) return;
+      dot.color = rec.to_color;
+      dot.pulse = 1;
+      dot.trail = [];
+      swPushTick(dot.first, dot.homeroom, rec.to_color);
+    })
+    .subscribe();
+}
+
+function swPushTick(first, homeroom, to) {
+  var teacher = (homeroom || '').split('-').slice(1).join('-') || homeroom;
+  var fill = SW_PHYSICS[to] ? SW_PHYSICS[to].fill : '#98A2AD';
+  SW_STATE.tickLog.unshift({ first: first, teacher: teacher, to: to, fill: fill });
+  if (SW_STATE.tickLog.length > 10) SW_STATE.tickLog.pop();
+  var ticker = document.getElementById('sw-ticker-inner');
+  if (!ticker) return;
+  ticker.innerHTML = SW_STATE.tickLog.map(function(t) {
+    return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px">' +
+      '<span style="font-weight:600;color:' + t.fill + '">' + escHtml(t.first) + '</span>' +
+      '<span style="color:var(--text3);font-size:10px">' + escHtml(t.teacher) + '</span>' +
+      '<span style="color:' + t.fill + ';font-weight:600">\u2192 ' + escHtml(t.to) + '</span>' +
+      '</span>' +
+      '<span style="color:var(--border);font-size:10px">\u00B7</span>';
+  }).join('');
+}
+
+function tickSchoolWide() {
+  if (!SW_STATE.running) { SW_STATE.raf = null; return; }
+  var cv = document.getElementById('sw-canvas');
+  if (!cv) { SW_STATE.raf = null; SW_STATE.running = false; return; }
+
+  var dpr = window.devicePixelRatio || 1;
+  var W = cv.offsetWidth || 340;
+  var H = 320;
+  cv.width = W * dpr; cv.height = H * dpr;
+  cv.style.height = H + 'px';
+  var ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  ctx.fillStyle = '#0f0e1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.022)';
+  for (var gx = 28; gx < W; gx += 40) {
+    for (var gy = 28; gy < H; gy += 40) {
+      ctx.beginPath(); ctx.arc(gx, gy, 1, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  var counts = { Green: 0, Yellow: 0, Orange: 0, Red: 0 };
+  var visSet = new Set(SW_STATE.visibleDots);
+
+  SW_STATE.allDots.forEach(function(d) {
+    var ph = SW_PHYSICS[d.color] || SW_PHYSICS.Green;
+    var cs = Math.sqrt(d.vx * d.vx + d.vy * d.vy) || .01;
+    var ns = cs + (ph.spd - cs) * 0.03;
+    d.vx = (d.vx / cs) * ns; d.vy = (d.vy / cs) * ns;
+    d.vx += (Math.random() - .5) * ph.wobble;
+    d.vy += (Math.random() - .5) * ph.wobble;
+    var s2 = Math.sqrt(d.vx * d.vx + d.vy * d.vy) || .01;
+    if (s2 > ph.maxSpd) { d.vx = d.vx / s2 * ph.maxSpd; d.vy = d.vy / s2 * ph.maxSpd; }
+    d.x += d.vx; d.y += d.vy;
+    var r = ph.r;
+    if (d.x < r)     { d.x = r;     d.vx =  Math.abs(d.vx); d.vy += (Math.random() - .5) * ph.bSpin; }
+    if (d.x > W - r) { d.x = W - r; d.vx = -Math.abs(d.vx); d.vy += (Math.random() - .5) * ph.bSpin; }
+    if (d.y < r)     { d.y = r;     d.vy =  Math.abs(d.vy); d.vx += (Math.random() - .5) * ph.bSpin; }
+    if (d.y > H - r) { d.y = H - r; d.vy = -Math.abs(d.vy); d.vx += (Math.random() - .5) * ph.bSpin; }
+    d.trail.push({ x: d.x, y: d.y });
+    if (d.trail.length > ph.trailL) d.trail.shift();
+
+    if (!visSet.has(d)) {
+      ctx.beginPath(); ctx.arc(d.x, d.y, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fill();
+      return;
+    }
+
+    var r2 = ph.r;
+    if (d.trail.length > 2) {
+      for (var ti = 1; ti < d.trail.length; ti++) {
+        var tf = ti / d.trail.length;
+        var talpha = Math.round(tf * ph.trailA * 255).toString(16).padStart(2, '0');
+        ctx.beginPath();
+        ctx.moveTo(d.trail[ti - 1].x, d.trail[ti - 1].y);
+        ctx.lineTo(d.trail[ti].x, d.trail[ti].y);
+        ctx.strokeStyle = ph.fill + talpha;
+        ctx.lineWidth = r2 * tf * 1.5;
+        ctx.lineCap = 'round'; ctx.stroke();
+      }
+    }
+    if (d.pulse > 0) {
+      var pr = r2 + (1 - d.pulse) * 14;
+      var pa = Math.round(d.pulse * 130).toString(16).padStart(2, '0');
+      ctx.beginPath(); ctx.arc(d.x, d.y, pr, 0, Math.PI * 2);
+      ctx.strokeStyle = ph.fill + pa; ctx.lineWidth = 1.5; ctx.stroke();
+      d.pulse = Math.max(0, d.pulse - 0.035);
+    }
+    if (ph.glow) {
+      ctx.beginPath(); ctx.arc(d.x, d.y, r2 + 4, 0, Math.PI * 2);
+      ctx.fillStyle = ph.glow; ctx.fill();
+    }
+    var ringColor = SW_GRADE_RING[d.grade] || '#ffffff';
+    ctx.beginPath(); ctx.arc(d.x, d.y, r2 + 1.5, 0, Math.PI * 2);
+    ctx.strokeStyle = ringColor + '55'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(d.x, d.y, r2, 0, Math.PI * 2);
+    ctx.fillStyle = ph.fill; ctx.fill();
+    if (d.color === 'Green' || d.color === 'Yellow') {
+      ctx.beginPath(); ctx.arc(d.x - r2 * .28, d.y - r2 * .28, r2 * .44, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.20)'; ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.arc(d.x - r2 * .2, d.y - r2 * .2, r2 * .18, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.32)'; ctx.fill();
+    }
+    counts[d.color]++;
+  });
+
+  var sg = document.getElementById('sw-sg'); if (sg) sg.textContent = counts.Green;
+  var sy = document.getElementById('sw-sy'); if (sy) sy.textContent = counts.Yellow;
+  var so = document.getElementById('sw-so'); if (so) so.textContent = counts.Orange;
+  var sr = document.getElementById('sw-sr'); if (sr) sr.textContent = counts.Red;
+
+  SW_STATE.raf = requestAnimationFrame(tickSchoolWide);
+}
+if(typeof window!=='undefined') window.swSetFilter=swSetFilter;
 
 // ── PROFILE DROPDOWN ──
 var _profileDropdownInited=false;
@@ -813,14 +1070,19 @@ function updateNavActive(screenId){
   }
 }
 function showScreen(id,back){
+  var prevScreen=STATE.currentScreen;
+  if(prevScreen==='S-admin'&&id!=='S-admin') stopSchoolWide();
   STATE.currentScreen=id;
   document.querySelectorAll('.screen').forEach(function(s){
     if(s.id===id){s.classList.remove('hidden','back');}
     else if(!s.classList.contains('hidden')){if(back)s.classList.add('back');s.classList.add('hidden');}
   });
   updateNavActive(id);
+  if(id==='S-admin'&&STATE.adminTab==='overview') {
+    setTimeout(function(){ if(!SW_STATE.running) initSchoolWide(); }, 120);
+  }
 }
-function goTeacher(){STATE.entry=freshEntry();STATE.step=0;STATE.myDbLoaded=false;STATE.myDbLogs=[];updateUserDisplay();showScreen('S-teacher');showPane('log');renderStep();updateTeacherNav();updateLogBadge();renderPendingDocQueue();}
+function goTeacher(){stopSchoolWide();STATE.entry=freshEntry();STATE.step=0;STATE.myDbLoaded=false;STATE.myDbLogs=[];updateUserDisplay();showScreen('S-teacher');showPane('log');renderStep();updateTeacherNav();updateLogBadge();renderPendingDocQueue();}
 
 function updateTeacherNav(){
   var sw = el('btn-t-switch');
@@ -2187,7 +2449,7 @@ function buildLiveStats(rows){
 }
 
 // ── ADMIN ──
-function setTab(t){STATE.adminTab=t;document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab===t);});renderAdmin();}
+function setTab(t){var prev=STATE.adminTab;if(prev==='overview'&&t!=='overview') stopSchoolWide();STATE.adminTab=t;document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab===t);});renderAdmin();if(t==='overview') setTimeout(function(){ if(!SW_STATE.running) initSchoolWide(); },100);}
 
 // Interpretation note shown once at top of admin, persists across tabs
 
@@ -2240,6 +2502,11 @@ function renderAdmin(){
     });
   }
   setTimeout(drawCharts,60);
+  if(STATE.adminTab === 'overview') {
+    setTimeout(function() {
+      if(!SW_STATE.running) initSchoolWide();
+    }, 100);
+  }
   body.querySelectorAll('[data-cls]').forEach(function(r){r.addEventListener('click',function(){openDet(r.dataset.cls,live);});});
   if(t==='classes') animateListIn(body);
   initPullToRefresh(body, function() {
@@ -2433,12 +2700,9 @@ function bOV(live){
       '<div style="font-size:12px;color:var(--text2)">'+escHtml(criticalUnread[0].title)+(criticalUnread.length>1?' and '+(criticalUnread.length-1)+' more...':'')+'</div>'+
     '</div>':'';
   var LD=live||{};
-  if(!LD.total){
-    return alertStrip+'<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
-  }
-  var tot=LD.total+STATE.logs.length;
-  var chartPct=Math.round((LD.chart_yes||0)/LD.total*100);
-  var homePct=Math.round((LD.home_yes||0)/LD.total*100);
+  var tot=(LD.total||0)+STATE.logs.length;
+  var chartPct=LD.total?Math.round((LD.chart_yes||0)/LD.total*100):0;
+  var homePct=LD.total?Math.round((LD.home_yes||0)/LD.total*100):0;
   var dateRange=LD.date_range||'No data';
   var uniqueDays=LD.unique_days||0;
   var perDay=LD.per_day||'—';
@@ -2463,12 +2727,38 @@ function bOV(live){
       var mx=specList[0].total||1;
       return specList.map(function(s,i){return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+subjectBarColor(i)+'">'+s.n+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">'+s.total+'</span></div>'+pb((s.total/mx)*100,subjectBarColor(i))+'</div>';}).join('');
     }())+'</div>';
+  var gradeLabels={all:'All',K:'K','1':'1st','2':'2nd','3':'3rd','4':'4th','5':'5th'};
+  var livePhysicsCard = '<div id="sw-widget-wrap" style="padding:0 0 8px">' +
+    '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">' +
+      '<span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Grade</span>' +
+      ['all','K','1','2','3','4','5'].map(function(g) {
+        return '<button class="sw-grade-btn chip' + (g===SW_STATE.activeGrade?' on':'') + '" data-grade="' + g + '" onclick="swSetFilter(\'' + g + '\')">' + gradeLabels[g] + '</button>';
+      }).join('') +
+      '<span id="sw-shown-count" style="font-size:10px;color:var(--text3);margin-left:4px"></span>' +
+    '</div>' +
+    '<div style="border-radius:10px;overflow:hidden;border:0.5px solid var(--border)">' +
+      '<canvas id="sw-canvas" style="display:block;width:100%" height="320"></canvas>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;flex-wrap:wrap;gap:6px">' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+        ['Green:#4ABFA3','Yellow:#E8C547','Orange:#E87D2B','Red:#D63B3B'].map(function(x){var p=x.split(':');return '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text2)"><span style="width:8px;height:8px;border-radius:50%;background:'+p[1]+';display:inline-block"></span>'+p[0]+'</span>';}).join('') +
+      '</div>' +
+      '<div style="display:flex;gap:6px">' +
+        [['sg','#4ABFA3','Green'],['sy','#E8C547','Yellow'],['so','#E87D2B','Orange'],['sr','#D63B3B','Red']].map(function(x){return '<div style="background:var(--panel);border-radius:8px;padding:4px 10px;text-align:center;border:0.5px solid var(--border)"><div style="font-size:15px;font-weight:600;color:'+x[1]+'" id="sw-'+x[0]+'">0</div><div style="font-size:9px;color:var(--text3)">'+x[2]+'</div></div>';}).join('') +
+      '</div>' +
+    '</div>' +
+    '<div style="margin-top:6px;height:26px;border-radius:7px;border:0.5px solid var(--border);background:var(--panel);display:flex;align-items:center;padding:0 10px;gap:8px;overflow:hidden">' +
+      '<span style="font-size:9px;font-weight:700;color:#BFA95F;text-transform:uppercase;letter-spacing:.08em;flex-shrink:0">Live</span>' +
+      '<div style="flex:1;overflow:hidden;display:flex;align-items:center;gap:10px"><div id="sw-ticker-inner" style="display:flex;gap:12px;white-space:nowrap"><span style="font-size:11px;color:var(--text3)">Waiting for transitions\u2026</span></div></div>' +
+    '</div>' +
+  '</div>';
   return alertStrip +
-    buildAcc('ov','kpi','Summary',tot+' incidents',kpiGrid,true) +
-    buildAcc('ov','weekly','Weekly trend','',weeklyCard,true) +
-    buildAcc('ov','grade','By grade','',gradeCard,true) +
-    buildAcc('ov','behavior','Behavior types','tagged · multi-select',behaviorCard,true) +
-    buildAcc('ov','subject','By subject','',subjectCard,true);
+    buildAcc('ov','live','Live class energy','school-wide \u00B7 real-time',livePhysicsCard,true) +
+    buildAcc('ov','kpi','Summary',tot+' incidents',kpiGrid,false) +
+    buildAcc('ov','weekly','Weekly trend','',weeklyCard,false) +
+    buildAcc('ov','grade','By grade','',gradeCard,false) +
+    buildAcc('ov','behavior','Behavior types','tagged \u00B7 multi-select',behaviorCard,false) +
+    buildAcc('ov','subject','By subject','',subjectCard,false);
 }
 function bTM(live){
   var rows=STATE.liveRows||[];
@@ -3611,7 +3901,7 @@ el('T-overlay').addEventListener('click',closeSheet);
 el('btn-log-another').addEventListener('click',closeSheet);
 el('AN-classes').addEventListener('click',function(){ if(SESSION.role!=='admin') return; STATE.clsFilter='all';showScreen('S-classes');renderClsExplorer(STATE.liveRows.length?buildLiveStats(STATE.liveRows):null);});
 el('AN-log').addEventListener('click',goTeacher);
-el('btn-cls-back').addEventListener('click',function(){showScreen('S-admin',true);});
+el('btn-cls-back').addEventListener('click',function(){showScreen('S-admin',true);if(STATE.adminTab==='overview') setTimeout(function(){ if(!SW_STATE.running) initSchoolWide(); },100);});
 el('btn-det-back').addEventListener('click',function(){
   stopLiveColorChannel();
   if(DET_PREV_SCREEN==='S-teacher'){
@@ -3880,6 +4170,7 @@ export {
   openEditSheet, closeEditSheet, populateEditSheet, openDelConfirm, closeDelConfirm,
   renderStep, goTeacher, showPane, closeSheet, renderHistory, fetchMyLogs,
   goAdmin, renderAdmin, setTab, bOV, bAL, bTM, bST, bCL,
+  initSchoolWide, swSetFilter, stopSchoolWide, startSchoolWideChannel, swPushTick, tickSchoolWide,
   renderClsExplorer, filterClasses, openDet, showScreen, escHtml,
   openStudent, wireStudentLinks, stuNameLink, setStuPrevScreen, getStuPrevScreen, displayBehavior,
   skeletonRows, skeletonKpis, animateListIn, showToast, emptyState,
