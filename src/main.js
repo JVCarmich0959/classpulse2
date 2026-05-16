@@ -299,11 +299,18 @@ var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'over
 var STU_PREV_SCREEN='S-detail';
 var DET_PREV_SCREEN='S-classes';
 var DET_PHYSICS = {
-  Green:  {spd:0.30, maxSpd:0.55, r:11, wobble:0.018, fill:'#4ABFA3', glow:null,                    trailAlpha:0.10, trailLen:8,  bounceSpin:0.08},
-  Yellow: {spd:0.72, maxSpd:1.10, r:12, wobble:0.055, fill:'#E8C547', glow:null,                    trailAlpha:0.14, trailLen:10, bounceSpin:0.12},
+  Green:  {spd:0.30, maxSpd:0.55, r:11, wobble:0.018, fill:'#4ABFA3', glow:null,               trailAlpha:0.10, trailLen:8,  bounceSpin:0.07},
+  Yellow: {spd:0.72, maxSpd:1.10, r:12, wobble:0.055, fill:'#E8C547', glow:null,               trailAlpha:0.14, trailLen:10, bounceSpin:0.12},
   Orange: {spd:1.35, maxSpd:2.00, r:13, wobble:0.110, fill:'#E87D2B', glow:'rgba(232,125,43,0.16)', trailAlpha:0.18, trailLen:12, bounceSpin:0.28},
-  Red:    {spd:2.10, maxSpd:3.20, r:14, wobble:0.200, fill:'#D63B3B', glow:'rgba(214,59,59,0.22)',  trailAlpha:0.22, trailLen:14, bounceSpin:0.45}
+  Red:    {spd:2.10, maxSpd:3.20, r:14, wobble:0.200, fill:'#D63B3B', glow:'rgba(214,59,59,0.22)',  trailAlpha:0.22, trailLen:14, bounceSpin:0.44},
 };
+
+function gradeFromHomeroom(homeroom) {
+  if (!homeroom) return '';
+  if (homeroom.indexOf('K-') === 0 || homeroom === 'K') return 'K';
+  var m = homeroom.match(/^(\d)/);
+  return m ? m[1] : '';
+}
 
 var DET_LIVE = {
   dots:        [],
@@ -3458,6 +3465,8 @@ function initLiveDots(homeroom, rosterRows) {
           name:   studentName,
           first:  (studentName.split(' ')[0] || 'Scholar'),
           color:  DET_PHYSICS[color] ? color : 'Green',
+          grade:  gradeFromHomeroom(homeroom),
+          r:      DET_PHYSICS[color] ? DET_PHYSICS[color].r : 11,
           x:      Math.max(16, Math.min(W - 16, cx)),
           y:      Math.max(16, Math.min(H - 16, cy)),
           vx:     Math.cos(angle) * ph.spd,
@@ -3485,13 +3494,23 @@ function tickLive() {
   cv.height = H * dpr;
   cv.style.height = H + 'px';
   var ctx = cv.getContext('2d');
-  if(!ctx){ DET_LIVE.raf = requestAnimationFrame(tickLive); return; }
+  if (!ctx) { DET_LIVE.raf = requestAnimationFrame(tickLive); return; }
   ctx.scale(dpr, dpr);
 
-  var isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme:dark)').matches;
-  ctx.clearRect(0, 0, W, H);
+  // Temperature-based background - warms as class heats up
+  var total = DET_LIVE.dots.length || 1;
+  var hot   = DET_LIVE.dots.filter(function(d){ return d.color === 'Red'; }).length;
+  var warm  = DET_LIVE.dots.filter(function(d){ return d.color === 'Orange'; }).length;
+  var mild  = DET_LIVE.dots.filter(function(d){ return d.color === 'Yellow'; }).length;
+  var heat  = Math.min(1, (hot * 3 + warm * 1.5 + mild * 0.5) / total / 0.6);
+  var br = Math.round(15 + heat * 8);
+  var bg = Math.round(14 - heat * 5);
+  var bb = Math.round(26 - heat * 16);
+  ctx.fillStyle = 'rgb(' + br + ',' + bg + ',' + bb + ')';
+  ctx.fillRect(0, 0, W, H);
 
-  ctx.fillStyle = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)';
+  // Dot grid texture
+  ctx.fillStyle = 'rgba(255,255,255,0.022)';
   for (var gx = 20; gx < W; gx += 36) {
     for (var gy = 20; gy < H; gy += 36) {
       ctx.beginPath(); ctx.arc(gx, gy, 1, 0, Math.PI * 2); ctx.fill();
@@ -3500,8 +3519,10 @@ function tickLive() {
 
   var counts = { Green: 0, Yellow: 0, Orange: 0, Red: 0 };
 
+  // Physics update
   DET_LIVE.dots.forEach(function(d) {
     var ph = DET_PHYSICS[d.color] || DET_PHYSICS.Green;
+    var r  = ph.r;
 
     var curSpd = Math.sqrt(d.vx * d.vx + d.vy * d.vy) || 0.01;
     var newSpd = curSpd + (ph.spd - curSpd) * 0.04;
@@ -3516,7 +3537,6 @@ function tickLive() {
 
     d.x += d.vx; d.y += d.vy;
 
-    var r = ph.r;
     if (d.x < r)     { d.x = r;     d.vx =  Math.abs(d.vx); d.vy += (Math.random() - .5) * ph.bounceSpin; }
     if (d.x > W - r) { d.x = W - r; d.vx = -Math.abs(d.vx); d.vy += (Math.random() - .5) * ph.bounceSpin; }
     if (d.y < r)     { d.y = r;     d.vy =  Math.abs(d.vy); d.vx += (Math.random() - .5) * ph.bounceSpin; }
@@ -3524,7 +3544,41 @@ function tickLive() {
 
     d.trail.push({ x: d.x, y: d.y });
     if (d.trail.length > ph.trailLen) d.trail.shift();
+  });
 
+  // Elastic collision - class-level has fewer dots so full O(n^2) is fine
+  var dots = DET_LIVE.dots;
+  for (var i = 0; i < dots.length; i++) {
+    for (var j = i + 1; j < dots.length; j++) {
+      var a = dots[i], b = dots[j];
+      var ph_a = DET_PHYSICS[a.color] || DET_PHYSICS.Green;
+      var ph_b = DET_PHYSICS[b.color] || DET_PHYSICS.Green;
+      var dx = b.x - a.x, dy = b.y - a.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      var minD = ph_a.r + ph_b.r + 0.5;
+      if (dist < minD && dist > 0.01) {
+        var overlap = (minD - dist) / 2;
+        var nx = dx / dist, ny = dy / dist;
+        a.x -= nx * overlap; a.y -= ny * overlap;
+        b.x += nx * overlap; b.y += ny * overlap;
+        var dvx = a.vx - b.vx, dvy = a.vy - b.vy;
+        var dot = dvx * nx + dvy * ny;
+        if (dot > 0) {
+          a.vx -= dot * nx; a.vy -= dot * ny;
+          b.vx += dot * nx; b.vy += dot * ny;
+        }
+      }
+    }
+  }
+
+  // Render
+  var GRADE_RING = {K:'#8B7BE0','1':'#4ABFA3','2':'#E8C547','3':'#E87D2B','4':'#D63B3B','5':'#BFA95F'};
+
+  DET_LIVE.dots.forEach(function(d) {
+    var ph = DET_PHYSICS[d.color] || DET_PHYSICS.Green;
+    var r  = ph.r;
+
+    // Trail
     if (d.trail.length > 2) {
       for (var ti = 1; ti < d.trail.length; ti++) {
         var tf = ti / d.trail.length;
@@ -3539,6 +3593,7 @@ function tickLive() {
       }
     }
 
+    // Pulse on color change
     if (d.pulse > 0) {
       var pr = r + (1 - d.pulse) * 20;
       var palpha = Math.round(d.pulse * 160).toString(16).padStart(2, '0');
@@ -3550,6 +3605,7 @@ function tickLive() {
       d.pulse = Math.max(0, d.pulse - 0.035);
     }
 
+    // Hot glow for orange and red
     if (ph.glow) {
       ctx.beginPath();
       ctx.arc(d.x, d.y, r + 5, 0, Math.PI * 2);
@@ -3557,15 +3613,25 @@ function tickLive() {
       ctx.fill();
     }
 
+    // Grade ring - tells you which grade at a glance
+    var ring = GRADE_RING[d.grade] || 'rgba(255,255,255,0.3)';
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, r + 1.8, 0, Math.PI * 2);
+    ctx.strokeStyle = ring + '60';
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+
+    // Main dot
     ctx.beginPath();
     ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
     ctx.fillStyle = ph.fill;
     ctx.fill();
 
+    // Highlight - soft for cool, sharp for hot
     if (d.color === 'Green' || d.color === 'Yellow') {
       ctx.beginPath();
       ctx.arc(d.x - r * .3, d.y - r * .3, r * .46, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.26)';
+      ctx.fillStyle = 'rgba(255,255,255,0.24)';
       ctx.fill();
     } else {
       ctx.beginPath();
@@ -3574,15 +3640,67 @@ function tickLive() {
       ctx.fill();
     }
 
-    ctx.font = '500 9px Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = isDark ? 'rgba(255,255,255,0.78)' : 'rgba(20,16,64,0.72)';
-    ctx.fillText(d.first, d.x, d.y + r + 11);
-
     counts[d.color] = (counts[d.color] || 0) + 1;
   });
 
   DET_LIVE.raf = requestAnimationFrame(tickLive);
+}
+
+function initDetLiveHover() {
+  var wrap = document.getElementById('det-live-wrap');
+  var cv   = document.getElementById('det-live-canvas');
+  if (!wrap || !cv) return;
+  if (wrap._hoverInited) return;
+  wrap._hoverInited = true;
+
+  if (!wrap.style.position) wrap.style.position = 'relative';
+
+  // Build a floating tooltip inside det-live-wrap
+  var tip = document.createElement('div');
+  tip.style.cssText = 'display:none;position:absolute;pointer-events:none;' +
+    'background:rgba(20,14,60,0.95);border:0.5px solid rgba(191,169,95,0.5);' +
+    'color:#fff;font-size:11px;font-weight:600;padding:5px 12px;' +
+    'border-radius:20px;white-space:nowrap;transform:translate(-50%,-140%);z-index:10';
+  wrap.appendChild(tip);
+
+  function findDot(mx, my) {
+    var dots = DET_LIVE.dots;
+    for (var i = dots.length - 1; i >= 0; i--) {
+      var d = dots[i];
+      var ph = DET_PHYSICS[d.color] || DET_PHYSICS.Green;
+      var dx = d.x - mx, dy = d.y - my;
+      if (Math.sqrt(dx * dx + dy * dy) < ph.r + 6) return d;
+    }
+    return null;
+  }
+
+  cv.addEventListener('mousemove', function(e) {
+    var rect = cv.getBoundingClientRect();
+    var d = findDot(e.clientX - rect.left, e.clientY - rect.top);
+    if (d) {
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX - rect.left) + 'px';
+      tip.style.top  = (e.clientY - rect.top) + 'px';
+      tip.textContent = d.name;
+      cv.style.cursor = 'pointer';
+    } else {
+      tip.style.display = 'none';
+      cv.style.cursor = 'default';
+    }
+  });
+  cv.addEventListener('mouseleave', function() { tip.style.display = 'none'; });
+  cv.addEventListener('touchstart', function(e) {
+    var touch = e.touches[0];
+    var rect  = cv.getBoundingClientRect();
+    var d = findDot(touch.clientX - rect.left, touch.clientY - rect.top);
+    if (d) {
+      tip.style.display = 'block';
+      tip.style.left = (touch.clientX - rect.left) + 'px';
+      tip.style.top  = (touch.clientY - rect.top) + 'px';
+      tip.textContent = d.name;
+      setTimeout(function() { tip.style.display = 'none'; }, 2200);
+    }
+  }, { passive: true });
 }
 
 function startLiveColorChannel(homeroom) {
@@ -3689,6 +3807,7 @@ function openDet(id,live){
         DET_LIVE.homeroom = id;
         initLiveDots(id, rosterRows);
         startLiveColorChannel(id);
+        initDetLiveHover();
       });
     },60);
     return;
@@ -3796,6 +3915,7 @@ function openDet(id,live){
       DET_LIVE.homeroom = id;
       initLiveDots(id, rosterRows);
       startLiveColorChannel(id);
+      initDetLiveHover();
     });
     // fetch and render individual incidents
     fetchClassIncidents(id, function(err, rows){
