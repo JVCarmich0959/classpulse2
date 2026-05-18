@@ -3964,10 +3964,12 @@ function openDet(id,live){
     setTimeout(function(){
       fetchClassRoster(id,function(err,rosterRows){
         if(err) return;
-        DET_LIVE.homeroom = id;
-        initLiveDots(id, rosterRows);
-        startLiveColorChannel(id);
-        initDetLiveHover();
+        resolveHomeroom(id, function(resolvedId) {
+          DET_LIVE.homeroom = resolvedId;
+          initLiveDots(resolvedId, rosterRows);
+          startLiveColorChannel(resolvedId);
+          initDetLiveHover();
+        });
       });
     },60);
     return;
@@ -4079,10 +4081,12 @@ function openDet(id,live){
       }
       wireStudentLinks(wrap,'S-detail');
       animateListIn(wrap);
-      DET_LIVE.homeroom = id;
-      initLiveDots(id, rosterRows);
-      startLiveColorChannel(id);
-      initDetLiveHover();
+      resolveHomeroom(id, function(resolvedId) {
+        DET_LIVE.homeroom = resolvedId;
+        initLiveDots(resolvedId, rosterRows);
+        startLiveColorChannel(resolvedId);
+        initDetLiveHover();
+      });
     });
     // fetch and render individual incidents
     fetchClassIncidents(id, function(err, rows){
