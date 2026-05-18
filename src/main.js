@@ -3845,12 +3845,13 @@ function startLiveColorChannel(homeroom) {
       {
         event:  'INSERT',
         schema: 'public',
-        table:  'color_transitions',
-        filter: 'homeroom=eq.' + homeroom
+        table:  'color_transitions'
       },
       function(payload) {
         var rec = payload.new;
         if (!rec || !rec.student || !rec.to_color || !DET_PHYSICS[rec.to_color]) return;
+        // Filter client-side — same pattern as school-wide channel
+        if (rec.homeroom !== DET_LIVE.homeroom) return;
 
         var dot = null;
         for (var i = 0; i < DET_LIVE.dots.length; i++) {
