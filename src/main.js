@@ -88,7 +88,7 @@ function authedInsert(row){
   var tok = SESSION.token;
   return fetch(SB_URL + '/rest/v1/incidents', {
     method:'POST',
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok,'Content-Type':'application/json','Prefer':'return=minimal'},
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok,'Content-Type':'application/json','Prefer':'return=representation'},
     body: JSON.stringify(row)
   }).then(function(r){
     if(r.status === 401){
@@ -99,6 +99,71 @@ function authedInsert(row){
 }
 function authedSelect(query){
   return authedFetch('/rest/v1/incidents?' + query);
+}
+
+// Drop color_transitions that are duplicates of an incident from the same
+// behavioral event. Catches three cases:
+//   1. Auto-resolved Green returns with no needed documentation (noise).
+//   2. Transitions explicitly linked via incident_id.
+//   3. Orphan transitions from the legacy insert flow that didn't set
+//      incident_id — matched heuristically by (student, homeroom, specials,
+//      created_at within 5 minutes of an incident).
+function dedupeTransitions(incidents, transitions){
+  var inc = Array.isArray(incidents) ? incidents : [];
+  var tr  = Array.isArray(transitions) ? transitions : [];
+  var incidentIds = new Set(inc.map(function(r){ return r.id; }));
+  var bucket = {};
+  inc.forEach(function(r){
+    if(!r.created_at) return;
+    var key = (r.student||'') + '|' + (r.homeroom||'') + '|' + (r.specials||r.subject||'');
+    if(!bucket[key]) bucket[key] = [];
+    bucket[key].push(new Date(r.created_at).getTime());
+  });
+  var FIVE_MIN = 5 * 60 * 1000;
+  return tr.filter(function(t){
+    if(!t || !t.to_color) return false;
+    if(t.to_color === 'Green' && !t.needs_documentation) return false;
+    if(t.incident_id && incidentIds.has(t.incident_id)) return false;
+    if(t.created_at){
+      var key = (t.student||'') + '|' + (t.homeroom||'') + '|' + (t.specials||'');
+      var matches = bucket[key] || [];
+      var ts = new Date(t.created_at).getTime();
+      for(var i=0; i<matches.length; i++){
+        if(Math.abs(matches[i] - ts) < FIVE_MIN) return false;
+      }
+    }
+    return true;
+  });
+}
+
+// Normalize a color_transition row into a unified shape compatible with
+// the rendering and aggregation code that consumes incident rows.
+function transitionToUnifiedRow(t){
+  return {
+    _type:        'transition',
+    id:           'ct-' + t.id,
+    student:      t.student,
+    homeroom:     t.homeroom,
+    specials:     t.specials || '',
+    subject:      t.specials || '',
+    date:         t.incident_date || (t.created_at || '').slice(0, 10),
+    time:         (t.created_at || '').slice(11, 16),
+    incident_date: t.incident_date || (t.created_at || '').slice(0, 10),
+    incident_time: (t.created_at || '').slice(11, 16),
+    created_at:   t.created_at,
+    from_color:   t.from_color || 'Green',
+    to_color:     t.to_color,
+    resolved_at:  t.resolved_at,
+    duration_mins: (t.resolved_at && t.created_at)
+      ? Math.round((new Date(t.resolved_at) - new Date(t.created_at)) / 60000)
+      : null,
+    behaviors:    [],
+    color_chart:  false,
+    home_contact: false,
+    notes:        t.notes || '',
+    submitted_by: t.submitted_by || '',
+    needs_documentation: t.needs_documentation
+  };
 }
 
 
@@ -1374,21 +1439,27 @@ function checkAndNotify(entry, transitionId){
   var student=entry.studentName;
   var specials=entry.specials;
   var today=todayStr();
-  var q='select=id,student,behaviors,color_chart&specials=eq.'+encodeURIComponent(specials)+
+  var incQ='select=*&specials=eq.'+encodeURIComponent(specials)+
     '&incident_date=eq.'+today+'&order=created_at.desc&limit=100';
-  authedFetch('/rest/v1/incidents?'+q).then(function(r){return r.json();})
-    .then(function(rows){
-      rows=Array.isArray(rows)?rows:[];
+  var trQ='select=*&specials=eq.'+encodeURIComponent(specials)+
+    '&incident_date=eq.'+today+'&order=created_at.desc&limit=100';
+  Promise.all([
+    authedFetch('/rest/v1/incidents?'+incQ).then(function(r){return r.json();}),
+    authedFetch('/rest/v1/color_transitions?'+trQ).then(function(r){return r.json();}).catch(function(){return [];})
+  ]).then(function(results){
+    var incidents=Array.isArray(results[0])?results[0]:[];
+    var transitions=dedupeTransitions(incidents, Array.isArray(results[1])?results[1]:[]);
+    var totalToday=incidents.length+transitions.length;
       var notifications=[];
-      if(rows.length===4||rows.length===6||rows.length===8){
+      if(totalToday===4||totalToday===6||totalToday===8){
         notifications.push({
           type:'threshold_alert',
-          title:specials+' — '+rows.length+' incidents today',
-          body:rows.length+' behavioral incidents logged in '+specials+' today. Multiple scholars may need support. Consider checking in with '+getSubmitterDisplay(SESSION.email,specials)+'.',
+          title:specials+' — '+totalToday+' records today',
+          body:totalToday+' behavior records logged in '+specials+' today. Multiple scholars may need support. Consider checking in with '+getSubmitterDisplay(SESSION.email,specials)+'.',
           student:null,
           homeroom:entry.homeroom,
           specials:specials,
-          severity:rows.length>=6?'critical':'warning',
+          severity:totalToday>=6?'critical':'warning',
           school_year:NOTIF_SCHOOL_YEAR,
           school_id:NOTIF_SCHOOL_ID
         });
@@ -1532,37 +1603,41 @@ function attachSL(){
     el('T-sheet').classList.add('show');el('T-overlay').classList.add('show');
     authedInsert(row).then(function(r){
       if(!r.ok) throw new Error('HTTP '+r.status);
-      if(e.colorTransition){
-        var transition={
-          student:e.studentName,
-          homeroom:e.homeroom,
-          specials:e.specials,
-          from_color:'Green',
-          to_color:e.colorTransition,
-          incident_date:e.date||todayStr(),
-          notes:e.notes||'',
-          needs_documentation:false,
-          resolved_at:e.colorResolved?new Date().toISOString():null,
-          submitted_by:SESSION.email||'unknown',
-          school_year:NOTIF_SCHOOL_YEAR,
-          school_id:NOTIF_SCHOOL_ID
-        };
-        return authedFetch('/rest/v1/color_transitions',{
-          method:'POST',
-          headers:{'Prefer':'return=representation'},
-          body:JSON.stringify(transition)
-        }).then(function(tr){
-          if(!tr.ok) throw new Error('HTTP '+tr.status);
-          return tr.json();
-        }).then(function(rows){
-          var transitionId=rows&&rows[0]&&rows[0].id;
-          checkAndNotify(e,transitionId);
-        }).catch(function(err){
-          console.warn('Transition insert failed',err);
-          checkAndNotify(e,null);
-        });
-      }
-      checkAndNotify(e,null);
+      return r.json().catch(function(){return null;}).then(function(insertedRows){
+        var newIncidentId = insertedRows && insertedRows[0] && insertedRows[0].id;
+        if(e.colorTransition){
+          var transition={
+            student:e.studentName,
+            homeroom:e.homeroom,
+            specials:e.specials,
+            from_color:'Green',
+            to_color:e.colorTransition,
+            incident_date:e.date||todayStr(),
+            notes:e.notes||'',
+            needs_documentation:false,
+            resolved_at:e.colorResolved?new Date().toISOString():null,
+            incident_id:newIncidentId||null,
+            submitted_by:SESSION.email||'unknown',
+            school_year:NOTIF_SCHOOL_YEAR,
+            school_id:NOTIF_SCHOOL_ID
+          };
+          return authedFetch('/rest/v1/color_transitions',{
+            method:'POST',
+            headers:{'Prefer':'return=representation'},
+            body:JSON.stringify(transition)
+          }).then(function(tr){
+            if(!tr.ok) throw new Error('HTTP '+tr.status);
+            return tr.json();
+          }).then(function(rows){
+            var transitionId=rows&&rows[0]&&rows[0].id;
+            checkAndNotify(e,transitionId);
+          }).catch(function(err){
+            console.warn('Transition insert failed',err);
+            checkAndNotify(e,null);
+          });
+        }
+        checkAndNotify(e,null);
+      });
     }).catch(function(err){console.warn('Supabase insert failed',err);showToast('Could not connect', 'error');});
   });
 }
@@ -2053,7 +2128,7 @@ function renderHistory(){
   });
   var allLogs=STATE.logs.concat(filteredDb);
   if(!allLogs.length){
-    body.innerHTML='<div class="empty"><div class="empty-t">No logs yet</div><div class="empty-s">Your incidents will appear here as you log them.</div></div>';
+    body.innerHTML='<div class="empty"><div class="empty-t">No logs yet</div><div class="empty-s">Your behavior records will appear here as you log them.</div></div>';
     return;
   }
   var chartCount=allLogs.filter(function(l){return l.colorChart||l.color_chart;}).length;
@@ -2404,24 +2479,36 @@ function closeDelConfirm(){
 }
 
 // ── LIVE DATA FETCH ──
+// Fetches incidents AND color_transitions in parallel and returns a unified
+// row list where transitions deduplicated against incidents appear as
+// _type='transition' rows. Downstream (buildLiveStats) treats incidents and
+// transitions appropriately per metric.
 function fetchLiveData(cb){
-  authedSelect('select=*&order=created_at.desc&limit=500')
-    .then(function(r){
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      return r.json();
-    })
-    .then(function(rows){
-      STATE.liveRows = rows;
+  var incPromise = authedSelect('select=*&order=created_at.desc&limit=500')
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); });
+  var trPromise = authedFetch('/rest/v1/color_transitions?select=*&order=created_at.desc&limit=500')
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .catch(function(){ return []; });
+  Promise.all([incPromise, trPromise])
+    .then(function(results){
+      var incidents = Array.isArray(results[0]) ? results[0] : [];
+      var transitionsRaw = Array.isArray(results[1]) ? results[1] : [];
+      var transitions = dedupeTransitions(incidents, transitionsRaw)
+        .map(transitionToUnifiedRow);
+      // Tag incidents so buildLiveStats can distinguish them.
+      incidents.forEach(function(r){ r._type = 'incident'; });
+      var merged = incidents.concat(transitions);
+      STATE.liveRows = merged;
       STATE.liveLoaded = true;
       STATE.liveError = false;
       updateFreshnessPill();
-      if(cb) cb(null, rows);
+      if(cb) cb(null, merged);
     })
     .catch(function(err){
       STATE.liveError = true;
       STATE.liveLoaded = true;
       showToast('Could not connect', 'error');
-      if(err && err.message && err.message.indexOf('401')>=0) return; // already signed out
+      if(err && err.message && err.message.indexOf('401')>=0) return;
       if(cb) cb(err, null);
     });
 }
@@ -2429,11 +2516,16 @@ function fetchLiveData(cb){
 function buildLiveStats(rows){
   var total = rows.length;
   if(!total) return null;
-  var chartYes = rows.filter(function(r){return r.color_chart;}).length;
-  var homeYes = rows.filter(function(r){return r.home_contact;}).length;
-  // behavior counts
+  // Split: incidents are the source of truth for documentation metrics
+  // (chart%, home%) and behavior taxonomy. Transitions count toward
+  // overall volume (total, top students/classes, specials, DOW, weekly).
+  var incRows = rows.filter(function(r){ return r._type !== 'transition'; });
+  var incTotal = incRows.length;
+  var chartYes = incRows.filter(function(r){return r.color_chart;}).length;
+  var homeYes = incRows.filter(function(r){return r.home_contact;}).length;
+  // behavior counts (incidents only — transitions have no behavior taxonomy)
   var behCounts = {};
-  rows.forEach(function(r){
+  incRows.forEach(function(r){
     var behs = r.behaviors || [];
     behs.forEach(function(b){var mapped=displayBehavior(b);behCounts[mapped]=(behCounts[mapped]||0)+1;});
     if(!behs.length) behCounts['Unspecified']=(behCounts['Unspecified']||0)+1;
@@ -2506,12 +2598,16 @@ function buildLiveStats(rows){
   var clsMap = {};
   rows.forEach(function(r){
     var k=r.homeroom||'Unknown';
-    if(!clsMap[k]) clsMap[k]={total:0,chartY:0,homeY:0,behCounts:{},spCounts:{},stuCounts:{},wkCounts:{}};
+    if(!clsMap[k]) clsMap[k]={total:0,incTotal:0,chartY:0,homeY:0,behCounts:{},spCounts:{},stuCounts:{},wkCounts:{}};
     var c=clsMap[k];
     c.total++;
-    if(r.color_chart) c.chartY++;
-    if(r.home_contact) c.homeY++;
-    (r.behaviors||[]).forEach(function(b){var mapped=displayBehavior(b);c.behCounts[mapped]=(c.behCounts[mapped]||0)+1;});
+    var isIncident = r._type !== 'transition';
+    if(isIncident){
+      c.incTotal++;
+      if(r.color_chart) c.chartY++;
+      if(r.home_contact) c.homeY++;
+      (r.behaviors||[]).forEach(function(b){var mapped=displayBehavior(b);c.behCounts[mapped]=(c.behCounts[mapped]||0)+1;});
+    }
     if(r.specials) c.spCounts[r.specials]=(c.spCounts[r.specials]||0)+1;
     if(r.student) c.stuCounts[r.student]=(c.stuCounts[r.student]||0)+1;
     var ds=r.incident_date || (r.created_at||'').slice(0,10);
@@ -2521,10 +2617,12 @@ function buildLiveStats(rows){
   var classrooms = {};
   Object.keys(clsMap).forEach(function(k){
     var c=clsMap[k];
+    var denom=c.incTotal||1; // avoid /0 when a class has only transitions
     classrooms[k]={
       total:c.total,
-      chart:Math.round(c.chartY/c.total*100),
-      home:Math.round(c.homeY/c.total*100),
+      inc_total:c.incTotal,
+      chart:c.incTotal?Math.round(c.chartY/denom*100):0,
+      home:c.incTotal?Math.round(c.homeY/denom*100):0,
       behaviors:Object.keys(c.behCounts).sort(function(a,b){return c.behCounts[b]-c.behCounts[a];}).map(function(b){return{t:b,n:c.behCounts[b]};}),
       specials:c.spCounts,
       students:Object.keys(c.stuCounts).sort(function(a,b){return c.stuCounts[b]-c.stuCounts[a];}).map(function(s){return{name:s,n:c.stuCounts[s]};}),
@@ -2532,7 +2630,7 @@ function buildLiveStats(rows){
     };
   });
   var topCls = Object.keys(clsMap).sort(function(a,b){return clsMap[b].total-clsMap[a].total;}).slice(0,15).map(function(k){return{cls:k,n:clsMap[k].total};});
-  return {total:total,chart_yes:chartYes,home_yes:homeYes,behaviors:behaviors,grades:grades,specials:specials,dow:dow,weekly:weekly,top_students:topStudents,classrooms:classrooms,top_cls:topCls,date_range:dateRange,unique_days:uniqueDays,per_day:perDay};
+  return {total:total,inc_total:incTotal,chart_yes:chartYes,home_yes:homeYes,behaviors:behaviors,grades:grades,specials:specials,dow:dow,weekly:weekly,top_students:topStudents,classrooms:classrooms,top_cls:topCls,date_range:dateRange,unique_days:uniqueDays,per_day:perDay};
 }
 
 // ── ADMIN ──
@@ -2739,7 +2837,7 @@ function bAL(){
     return skeletonRows(5);
   }
   var rows=STATE.notifRows||[];
-  if(!rows.length) return emptyState('No alerts','Alerts appear here when incidents cross notification thresholds.');
+  if(!rows.length) return emptyState('No alerts','Alerts appear here when behavior records cross notification thresholds.');
   markAllNotifsRead();
   var severityColor={critical:'#c0392b',warning:'#BFA95F',info:'#271A70'};
   var severityLabel={critical:'Critical',warning:'Warning',info:'Info'};
@@ -2789,22 +2887,23 @@ function bOV(live){
       '<div style="font-size:12px;color:var(--text2)">'+escHtml(criticalUnread[0].title)+(criticalUnread.length>1?' and '+(criticalUnread.length-1)+' more...':'')+'</div>'+
     '</div>':'';
   var LD=live||{};
+  var incTotal=LD.inc_total||0;
   var tot=(LD.total||0)+STATE.logs.length;
-  var chartPct=LD.total?Math.round((LD.chart_yes||0)/LD.total*100):0;
-  var homePct=LD.total?Math.round((LD.home_yes||0)/LD.total*100):0;
+  var chartPct=incTotal?Math.round((LD.chart_yes||0)/incTotal*100):0;
+  var homePct=incTotal?Math.round((LD.home_yes||0)/incTotal*100):0;
   var dateRange=LD.date_range||'No data';
   var uniqueDays=LD.unique_days||0;
   var perDay=LD.per_day||'—';
   var kpiGrid='<div class="kpi-grid">' +
-    kpiH('Total incidents',tot,dateRange,false)+
-    kpiH('Per logged incident day',perDay,uniqueDays+' logged incident days',false)+
-    kpiH('Color chart used',chartPct+'%',(LD.chart_yes||0)+' of '+LD.total+' incidents',false)+
-    kpiH('Home contacted',homePct+'%',(LD.home_yes||0)+' of '+LD.total+' incidents',true)+
+    kpiH('Behavior records',tot,dateRange,false)+
+    kpiH('Per logged day',perDay,uniqueDays+' logged days',false)+
+    kpiH('Color chart used',chartPct+'%',(LD.chart_yes||0)+' of '+incTotal+' incidents',false)+
+    kpiH('Home contacted',homePct+'%',(LD.home_yes||0)+' of '+incTotal+' incidents',true)+
     '</div>';
-  var weeklyCard='<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">Weekly incidents / logged incident day</div>'+
+  var weeklyCard='<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">Weekly records / logged day</div>'+
     '<canvas id="c-wk" height="80" style="width:100%;display:block" data-live="1"></canvas>'+
     '<div style="display:flex;gap:12px;margin-top:8px">'+
-    '<span style="font-size:10px;color:var(--text2);display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:2px;background:#271A70;border-radius:1px"></span>Incidents/logged day</span>'+
+    '<span style="font-size:10px;color:var(--text2);display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:2px;background:#271A70;border-radius:1px"></span>Records/logged day</span>'+
     '</div></div>';
   var gradeCard='<div class="card"><canvas id="c-gr" height="100" style="width:100%;display:block"></canvas></div>';
   var behaviorCard='<div class="card">'+
@@ -2867,14 +2966,16 @@ function bOV(live){
 
   return alertStrip +
     buildAcc('ov','live','Live class energy','school-wide \u00B7 real-time', swFilters+swCard, true) +
-    buildAcc('ov','kpi','Summary',tot+' incidents',kpiGrid,false) +
+    buildAcc('ov','kpi','Summary',tot+' records',kpiGrid,false) +
     buildAcc('ov','weekly','Weekly trend','',weeklyCard,false) +
     buildAcc('ov','grade','By grade','',gradeCard,false) +
     buildAcc('ov','behavior','Behavior types','tagged \u00B7 multi-select',behaviorCard,false) +
     buildAcc('ov','subject','By subject','',subjectCard,false);
 }
 function bTM(live){
-  var rows=STATE.liveRows||[];
+  // Data-quality view: only meaningful for full incidents. Quick-color
+  // transitions don't carry behavior/chart/home/time fields by design.
+  var rows=(STATE.liveRows||[]).filter(function(r){ return r._type !== 'transition'; });
   if(!rows.length){
     return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
   }
@@ -3056,7 +3157,7 @@ function bHeatForRows(rows, subjectFilter, opts){
         '<span style="font-size:12px;font-weight:600;color:'+cellColor+'">'+v+'</span>';
       h+='<td style="text-align:center;padding:4px 2px;cursor:'+(v>0?'pointer':'default')+'"'+
         (v>0?' data-hp="'+escHtml(p.label)+'" data-hd="'+escHtml(d)+'"':'')+
-        ' title="'+p.label+' '+d+': '+v+' incident'+(v===1?'':'s')+'">'+
+        ' title="'+p.label+' '+d+': '+v+' record'+(v===1?'':'s')+'">'+
         '<div style="background:'+bg+';border-radius:4px;padding:6px 4px;min-width:32px">'+txt+'</div></td>';
     });
     h+='</tr>';
@@ -3102,7 +3203,7 @@ function wireHeatCard(cardId, rows, opts){
       var ul=document.getElementById(prefix+'-drill-list');
       if(!drill) return;
       if(!list.length){drill.style.display='none';return;}
-      hdr.textContent=period+' · '+HEAT_DAY_FULL[HEAT_DAYS.indexOf(day)]+' — '+list.length+' incident'+(list.length===1?'':'s');
+      hdr.textContent=period+' · '+HEAT_DAY_FULL[HEAT_DAYS.indexOf(day)]+' — '+list.length+' record'+(list.length===1?'':'s');
       ul.innerHTML=list.map(function(r){
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(39,26,112,.08);font-size:11px">'+
           '<div>'+
@@ -3139,7 +3240,7 @@ function bST(live){
   var mx=stuList[0].n||1;
   var listContent='<div class="card">'+
     stuList.map(function(s){return '<div class="li" data-scholar-row="1" data-stu="'+escAttr(s.name)+'"><div class="li-c"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span class="scholar-name">'+stuNameLink(s.name)+'</span><span class="inc-count" style="color:'+scholarBarColor(s.n)+'">'+s.n+'</span></div>'+pb((s.n/mx)*100,scholarBarColor(s.n))+'</div></div>';}).join('')+'</div>';
-  return buildAcc('st','list','Scholars with 4+ incidents',stuList.length+' scholars',searchHtml+listContent,true) +
+  return buildAcc('st','list','Scholars with 4+ records',stuList.length+' scholars',searchHtml+listContent,true) +
     buildAcc('st','system','System notes','','',false);
 }
 function bCL(live){
@@ -3147,7 +3248,7 @@ function bCL(live){
   var sorted=(LD.top_cls&&LD.top_cls.length?LD.top_cls:[]).slice().sort(function(a,b){return b.n-a.n;});
   if(!sorted.length) return '<div class="card" style="text-align:center;padding:32px 0;color:var(--text3);font-size:12px">No live data loaded yet.</div>';
   var mx=sorted[0].n||1;
-  return '<div class="sec">All classrooms · sorted by incident count</div><div class="card">'+
+  return '<div class="sec">All classrooms · sorted by record count</div><div class="card">'+
     sorted.map(function(c,i){var det=(LD.classrooms&&LD.classrooms[c.cls])||{};return '<div class="li" data-cls="'+c.cls+'"><div class="li-c"><div class="li-t">'+c.cls+'</div><div class="li-s">Chart: '+(det.chart!=null?det.chart:'—')+'% · Home: '+(det.home!=null?det.home:0)+'%</div>'+pb((c.n/mx)*100,scholarBarColor(c.n))+'</div><div class="li-r inc-count" style="margin-left:10px">'+c.n+'</div><div style="color:var(--text3);font-size:18px"></div></div>';}).join('')+'</div>';
 }
 
@@ -3174,8 +3275,8 @@ function renderClsExplorer(live){
   // build filter chips
   var filters=[
     {k:'all',lb:'All ('+ALL_CLASSES.length+')'},
-    {k:'zero',lb:'Zero incidents'},
-    {k:'four',lb:'4+ incidents'},
+    {k:'zero',lb:'Zero records'},
+    {k:'four',lb:'4+ records'},
     {k:'lowchart',lb:'Low chart use'}
   ];
   var fHtml='<div class="cls-filters">'+filters.map(function(f){return '<button class="fchip'+(STATE.clsFilter===f.k?' on':'')+'" data-f="'+f.k+'">'+f.lb+'</button>';}).join('')+'</div>';
@@ -3199,10 +3300,10 @@ function renderClsExplorer(live){
       var tot=isZero?0:c.total;
       var chartV=isZero?'—':(c.chart+'%');
       var chartTag=isZero?'<span class="tag gray">No data</span>':('<span class="tag '+(c.chart>=50?'green':c.chart>=30?'amber':'red')+'">Chart '+c.chart+'%</span>');
-      var specHtml=isZero?'<span style="font-size:10px;color:var(--text3)">No incidents logged this window</span>':Object.keys(c.specials).filter(function(s){return c.specials[s]>0;}).map(function(s){return '<span style="font-size:10px;background:'+(SC[s]||'var(--text2)')+'22;color:'+(SC[s]||'var(--text3)')+';border-radius:10px;padding:2px 8px">'+s+': '+c.specials[s]+'</span>';}).join('');
+      var specHtml=isZero?'<span style="font-size:10px;color:var(--text3)">No records this window</span>':Object.keys(c.specials).filter(function(s){return c.specials[s]>0;}).map(function(s){return '<span style="font-size:10px;background:'+(SC[s]||'var(--text2)')+'22;color:'+(SC[s]||'var(--text3)')+';border-radius:10px;padding:2px 8px">'+s+': '+c.specials[s]+'</span>';}).join('');
       return '<div class="'+cardClass+'" style="cursor:pointer;margin-bottom:8px" data-cls="'+k+'">'+
         '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
-        '<div><div style="font-size:15px;font-weight:600">'+k+'</div><div style="font-size:11px;color:var(--text2);margin-top:2px">'+(isZero?'No incidents logged':''+tot+' incidents')+'</div></div>'+
+        '<div><div style="font-size:15px;font-weight:600">'+k+'</div><div style="font-size:11px;color:var(--text2);margin-top:2px">'+(isZero?'No records':''+tot+' records')+'</div></div>'+
         '<div style="text-align:right"><div style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;font-size:22px;font-weight:500;color:'+(isZero?'var(--text3)':'var(--text)')+'">'+tot+'</div>'+chartTag+'</div></div>'+
         '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">'+specHtml+'</div></div>';
     }).join('');
@@ -3231,34 +3332,80 @@ function renderClsExplorer(live){
 
 
 // ── EXPORT TO CSV ──
+// Exports both full incidents and (deduped) quick-color transitions in
+// one CSV with a 'type' column. Transition-specific columns are empty for
+// incident rows and vice-versa, so consumers can filter on `type`.
 function exportCSV(){
-  var tok=SESSION.token||SB_KEY;
   var btn=el('btn-export');
   if(btn){btn.textContent='[ Exporting… ]';btn.disabled=true;}
-  fetch(SB_URL+'/rest/v1/incidents?select=*&order=incident_date.asc,created_at.asc&limit=2000',{
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok}
-  }).then(function(r){return r.json();})
-  .then(function(rows){
-    var cols=['id','student','homeroom','specials','behaviors','incident_date','incident_time','color_chart','home_contact','notes','submitted_by','created_at'];
-    var csv=cols.join(',')+'\n'+rows.map(function(r){
+  function done(){ if(btn){btn.textContent='Export CSV';btn.disabled=false;} }
+
+  var incPromise = authedFetch('/rest/v1/incidents?select=*&order=incident_date.asc,created_at.asc&limit=2000')
+    .then(function(r){ return r.json(); });
+  var trPromise = authedFetch('/rest/v1/color_transitions?select=*&order=created_at.asc&limit=2000')
+    .then(function(r){ return r.json(); })
+    .catch(function(){ return []; });
+
+  Promise.all([incPromise, trPromise]).then(function(results){
+    var incidents = Array.isArray(results[0]) ? results[0] : [];
+    var transitions = dedupeTransitions(incidents, Array.isArray(results[1]) ? results[1] : []);
+
+    var cols = [
+      'type','id','student','homeroom','specials',
+      'behaviors','color_chart','home_contact',
+      'from_color','to_color','needs_documentation','resolved_at',
+      'incident_date','incident_time','notes','submitted_by','created_at'
+    ];
+
+    var incRows = incidents.map(function(r){
+      return Object.assign({type:'incident'}, r);
+    });
+    var trRows = transitions.map(function(t){
+      return {
+        type: 'transition',
+        id: t.id,
+        student: t.student,
+        homeroom: t.homeroom,
+        specials: t.specials || '',
+        from_color: t.from_color,
+        to_color: t.to_color,
+        needs_documentation: t.needs_documentation,
+        resolved_at: t.resolved_at,
+        incident_date: t.incident_date || (t.created_at||'').slice(0,10),
+        incident_time: (t.created_at||'').slice(11,16),
+        notes: t.notes || '',
+        submitted_by: t.submitted_by || '',
+        created_at: t.created_at
+      };
+    });
+    var allRows = incRows.concat(trRows);
+    allRows.sort(function(a,b){
+      var da = new Date(a.created_at||a.incident_date||0);
+      var db = new Date(b.created_at||b.incident_date||0);
+      return da - db;
+    });
+
+    var csv = cols.join(',') + '\n' + allRows.map(function(r){
       return cols.map(function(c){
-        var v=r[c];
-        if(Array.isArray(v)) v=v.join('; ');
-        if(v===null||v===undefined) v='';
-        v=String(v).replace(/"/g,'""');
-        return '"'+v+'"';
+        var v = r[c];
+        if(Array.isArray(v)) v = v.join('; ');
+        if(v===null || v===undefined) v = '';
+        v = String(v).replace(/"/g, '""');
+        return '"' + v + '"';
       }).join(',');
     }).join('\n');
-    var blob=new Blob([csv],{type:'text/csv'});
-    var url=URL.createObjectURL(blob);
-    var a=document.createElement('a');
-    a.href=url;a.download='classpulse-incidents-'+new Date().toISOString().slice(0,10)+'.csv';
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
+
+    var blob = new Blob([csv], {type:'text/csv'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'classpulse-records-' + new Date().toISOString().slice(0,10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    if(btn){btn.textContent='Export CSV';btn.disabled=false;}
-  }).catch(function(){
-    if(btn){btn.textContent='Export CSV';btn.disabled=false;}
-  });
+    done();
+  }).catch(done);
 }
 
 
@@ -3322,106 +3469,62 @@ function rosterRow(name, incCount, maxCount, hasInc){
   '</div>';
 }
 
-function fetchClassIncidents(homeroom, cb){
+// Normalize a full incident row to the unified shape consumed by
+// renderIncidentList and aggregation code. Mirrors transitionToUnifiedRow.
+function incidentToUnifiedRow(r){
+  return {
+    _type:         'incident',
+    id:            r.id,
+    student:       r.student,
+    homeroom:      r.homeroom,
+    specials:      r.specials || r.subject || '',
+    subject:       r.subject || r.specials || '',
+    date:          r.incident_date || (r.created_at || '').slice(0, 10),
+    time:          r.incident_time || (r.created_at || '').slice(11, 16),
+    incident_date: r.incident_date || (r.created_at || '').slice(0, 10),
+    incident_time: r.incident_time || (r.created_at || '').slice(11, 16),
+    created_at:    r.created_at,
+    behaviors:     r.behaviors || [],
+    color_chart:   r.color_chart,
+    home_contact:  r.home_contact,
+    notes:         r.notes || '',
+    submitted_by:  r.submitted_by || ''
+  };
+}
+
+// Fetch incidents + color_transitions filtered by a single PostgREST
+// predicate (e.g. 'student=eq.Foo' or 'homeroom=eq.K-1'), deduplicate
+// transitions against incidents, and return one timeline sorted newest-first.
+function fetchUnifiedRecords(predicate, cb){
   if(!SESSION.token){ if(cb) cb(new Error('not authenticated'),[]); return; }
-  var tok=SESSION.token;
-  var q='select=*&homeroom=eq.'+encodeURIComponent(homeroom)+'&order=incident_date.desc,created_at.desc&limit=200';
-  fetch(SB_URL+'/rest/v1/incidents?'+q,{
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+tok}
-  }).then(function(r){return r.json();})
-    .then(function(rows){if(cb)cb(null,rows);})
-    .catch(function(err){if(cb)cb(err,[]);});
+  var incPromise = authedFetch('/rest/v1/incidents?select=*&'+predicate+
+    '&order=incident_date.desc,created_at.desc&limit=200')
+    .then(function(r){ return r.json(); });
+  var trPromise = authedFetch('/rest/v1/color_transitions?select=*&'+predicate+
+    '&order=created_at.desc&limit=200')
+    .then(function(r){ return r.json(); })
+    .catch(function(){ return []; });
+  Promise.all([incPromise, trPromise]).then(function(results){
+    var incidents = Array.isArray(results[0]) ? results[0] : [];
+    var transitionsRaw = Array.isArray(results[1]) ? results[1] : [];
+    var transitions = dedupeTransitions(incidents, transitionsRaw);
+    var unified = incidents.map(incidentToUnifiedRow)
+      .concat(transitions.map(transitionToUnifiedRow));
+    unified.sort(function(a, b){
+      var da = new Date(a.created_at || a.date);
+      var db = new Date(b.created_at || b.date);
+      return db - da;
+    });
+    if(cb) cb(null, unified);
+  }).catch(function(err){ if(cb) cb(err, []); });
+}
+
+function fetchClassIncidents(homeroom, cb){
+  fetchUnifiedRecords('homeroom=eq.'+encodeURIComponent(homeroom), cb);
 }
 
 function fetchStudentIncidents(name, cb){
-  if(!SESSION.token){ if(cb) cb(new Error('not authenticated'),[]); return; }
-
-  var incidentsDone = false, transitionsDone = false;
-  var incidentRows = [], transitionRows = [];
-  var err1 = null, err2 = null;
-
-  function merge(){
-    if(!incidentsDone || !transitionsDone) return;
-    if(err1 && err2){ if(cb) cb(err1, []); return; }
-
-    var unified = incidentRows.map(function(r){
-      return {
-        _type:        'incident',
-        id:           r.id,
-        student:      r.student,
-        homeroom:     r.homeroom,
-        specials:     r.specials || r.subject || '',
-        subject:      r.subject || r.specials || '',
-        date:         r.incident_date || (r.created_at || '').slice(0, 10),
-        time:         r.incident_time || (r.created_at || '').slice(11, 16),
-        incident_date: r.incident_date || (r.created_at || '').slice(0, 10),
-        incident_time: r.incident_time || (r.created_at || '').slice(11, 16),
-        created_at:   r.created_at,
-        behaviors:    r.behaviors || [],
-        color_chart:  r.color_chart,
-        home_contact: r.home_contact,
-        notes:        r.notes || '',
-        submitted_by: r.submitted_by || ''
-      };
-    });
-
-    var incidentIds = new Set(incidentRows.map(function(r){ return r.id; }));
-
-    transitionRows
-      .filter(function(t){
-        if(t.incident_id && incidentIds.has(t.incident_id)) return false;
-        if(t.to_color === 'Green' && !t.needs_documentation) return false;
-        return true;
-      })
-      .forEach(function(t){
-        var durationMins = null;
-        if(t.resolved_at && t.created_at){
-          durationMins = Math.round((new Date(t.resolved_at) - new Date(t.created_at)) / 60000);
-        }
-        unified.push({
-          _type:        'transition',
-          id:           'ct-' + t.id,
-          student:      t.student,
-          homeroom:     t.homeroom,
-          specials:     t.specials || '',
-          subject:      t.specials || '',
-          date:         t.incident_date || (t.created_at || '').slice(0, 10),
-          time:         (t.created_at || '').slice(11, 16),
-          incident_date: t.incident_date || (t.created_at || '').slice(0, 10),
-          incident_time: (t.created_at || '').slice(11, 16),
-          created_at:   t.created_at,
-          from_color:   t.from_color || 'Green',
-          to_color:     t.to_color,
-          resolved_at:  t.resolved_at,
-          duration_mins: durationMins,
-          behaviors:    [],
-          color_chart:  false,
-          home_contact: false,
-          notes:        t.notes || '',
-          submitted_by: t.submitted_by || '',
-          needs_documentation: t.needs_documentation
-        });
-      });
-
-    unified.sort(function(a, b){
-      var da = new Date(a.created_at || a.date), db = new Date(b.created_at || b.date);
-      return db - da;
-    });
-
-    if(cb) cb(null, unified);
-  }
-
-  authedFetch('/rest/v1/incidents?select=*&student=eq.' +
-    encodeURIComponent(name) + '&order=incident_date.desc,created_at.desc&limit=200')
-    .then(function(r){ return r.json(); })
-    .then(function(rows){ incidentRows = Array.isArray(rows) ? rows : []; incidentsDone = true; merge(); })
-    .catch(function(e){ err1 = e; incidentsDone = true; merge(); });
-
-  authedFetch('/rest/v1/color_transitions?select=*&student=eq.' +
-    encodeURIComponent(name) + '&order=created_at.desc&limit=200')
-    .then(function(r){ return r.json(); })
-    .then(function(rows){ transitionRows = Array.isArray(rows) ? rows : []; transitionsDone = true; merge(); })
-    .catch(function(e){ err2 = e; transitionsDone = true; merge(); });
+  fetchUnifiedRecords('student=eq.'+encodeURIComponent(name), cb);
 }
 
 // ── RENDER INCIDENT LOG LIST (reusable) ──
@@ -3936,7 +4039,7 @@ function openDet(id,live){
   var backBtn=el('btn-det-back');
   if(backBtn) backBtn.textContent=DET_PREV_SCREEN==='S-teacher'?'‹ My Logs':'‹ Classes';
   el('det-title').textContent=id;
-  el('det-sub').textContent=isZero?'No incidents logged':c.total+' incidents · Chart: '+c.chart+'% · Home: '+c.home+'%';
+  el('det-sub').textContent=isZero?'No records logged':c.total+' records · Chart: '+c.chart+'% · Home: '+c.home+'%';
 
   if(isZero){
     el('det-body').innerHTML=
@@ -3954,7 +4057,7 @@ function openDet(id,live){
         '</div>',
         true
       )+
-      '<div class="card">' + emptyState('No incidents for this class', 'Incidents will appear as teachers log them.') + '</div>'+
+      '<div class="card">' + emptyState('No records for this class', 'Behavior records will appear as teachers log them.') + '</div>'+
       '<div style="height:16px"></div>';
     wireStudentLinks(el('det-body'),'S-detail');
     animateListIn(el('det-body'));
@@ -3993,7 +4096,7 @@ function openDet(id,live){
   el('det-body').innerHTML=
     summBlock+
     '<div class="kpi-grid" style="margin-bottom:10px">'+
-    kpiH('Total incidents',c.total,'specials logs',false)+
+    kpiH('Behavior records',c.total,'specials logs',false)+
     kpiH('Chart used',c.chart+'%','',c.chart<30)+
     kpiH('Home contact',c.home+'%','',c.home===0)+
     '<div class="kpi"><div class="lbl">Subjects logged</div><div class="val">'+Object.keys(c.specials).filter(function(k){return c.specials[k]>0;}).length+'</div></div></div>'+
@@ -4018,7 +4121,7 @@ function openDet(id,live){
     Object.keys(c.specials).map(function(s,i){var n=c.specials[s],col=subjectBarColor(i);return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:'+col+'">'+s+'</span><span style="font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">'+n+'</span></div>'+pb((n/mxSP)*100,col)+'</div>';}).join('')+'</div>'+
     '<div class="sec">Weekly trend</div><div class="card"><canvas id="c-det-wk" height="80" style="width:100%;display:block"></canvas></div>'+
     '<div class="sec" style="display:flex;justify-content:space-between;align-items:center">'+
-    'All incidents'+
+    'All behavior records'+
     '<span style="font-size:10px;color:var(--text3);font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;letter-spacing:.04em" id="det-inc-count">loading…</span>'+
     '</div>'+
   '<div id="det-inc-list" style="margin-bottom:16px">' + skeletonRows(6) + '</div>'+
@@ -4031,81 +4134,62 @@ function openDet(id,live){
     fetchClassRoster(id,function(err,rosterRows){
       var wrap=document.getElementById('det-roster-wrap');
       if(!wrap) return;
+      // c.students now includes transitions via the unified live data
+      // pipeline (buildLiveStats), so no separate transition fetch needed.
       var counts={};
+      var maxInc=0;
       if(c&&c.students){
-        c.students.forEach(function(s){ counts[s.name]=s.n; });
+        c.students.forEach(function(s){
+          counts[s.name]=s.n;
+          if(s.n>maxInc) maxInc=s.n;
+        });
       }
-
-      // Merge quick-color transitions so the roster reflects every behavior
-      // record, not just full write-ups. Skips Green-with-no-doc (auto-return
-      // to baseline) and any transition already linked to a counted incident.
-      authedFetch('/rest/v1/color_transitions?homeroom=eq.'+encodeURIComponent(id)+
-        '&select=student,to_color,needs_documentation,incident_id&limit=2000')
-        .then(function(r){ return r.json(); })
-        .then(function(transitions){
-          (Array.isArray(transitions)?transitions:[]).forEach(function(t){
-            if(!t.student) return;
-            if(t.incident_id) return;
-            if(t.to_color==='Green' && !t.needs_documentation) return;
-            counts[t.student]=(counts[t.student]||0)+1;
-          });
-        })
-        .catch(function(){})
-        .then(renderRoster);
-
-      function renderRoster(){
-        var maxInc=0;
-        Object.keys(counts).forEach(function(name){
-          if(counts[name]>maxInc) maxInc=counts[name];
-        });
-
-        if(err||!rosterRows.length){
-          var fallback=c&&c.students?c.students:[];
-          wrap.innerHTML='<div class="card">'+
-            (fallback.length?fallback.map(function(s){return rosterRow(s.name,counts[s.name]||s.n,maxInc,true);}).join(''):emptyState('No scholars on record',''))+
-            '</div>';
-          var fallbackMeta=document.querySelector('#acc-chev-det-roster');
-          if(fallbackMeta){
-            var fallbackHdr=fallbackMeta.closest('.acc-hdr')&&fallbackMeta.closest('.acc-hdr').querySelector('.acc-meta');
-            if(fallbackHdr) fallbackHdr.textContent=fallback.length+' scholars with behavior records';
-          }
-          wireStudentLinks(wrap,'S-detail');
-          return;
-        }
-        var totalInClass=rosterRows.length;
-        var withRecords=rosterRows.filter(function(r){return counts[r.student_name]>0;}).length;
-        var rosterHeader='<div style="display:flex;justify-content:space-between;align-items:center;'+
-          'padding:0 0 10px;border-bottom:1px solid var(--border);margin-bottom:8px">'+
-          '<div style="font-size:12px;color:var(--text2)">'+totalInClass+' scholars in class</div>'+
-          '<div style="font-size:12px;color:var(--text2)">'+withRecords+' with behavior records · '+
-            (totalInClass-withRecords)+' record-free</div>'+
+      if(err||!rosterRows.length){
+        var fallback=c&&c.students?c.students:[];
+        wrap.innerHTML='<div class="card">'+
+          (fallback.length?fallback.map(function(s){return rosterRow(s.name,s.n,maxInc,true);}).join(''):emptyState('No scholars on record',''))+
           '</div>';
-        rosterRows.sort(function(a,b){
-          var an=counts[a.student_name]||0;
-          var bn=counts[b.student_name]||0;
-          if(bn!==an) return bn-an;
-          return (a.last_name||'').localeCompare(b.last_name||'');
-        });
-        wrap.innerHTML='<div class="card">'+rosterHeader+
-          rosterRows.map(function(r){
-            var n=counts[r.student_name]||0;
-            return rosterRow(r.student_name,n,maxInc,n>0);
-          }).join('')+
-          '</div>';
-        var accMeta=document.querySelector('#acc-chev-det-roster');
-        if(accMeta){
-          var hdrLeft=accMeta.closest('.acc-hdr')&&accMeta.closest('.acc-hdr').querySelector('.acc-meta');
-          if(hdrLeft) hdrLeft.textContent=totalInClass+' scholars · '+withRecords+' with behavior records';
+        var fallbackMeta=document.querySelector('#acc-chev-det-roster');
+        if(fallbackMeta){
+          var fallbackHdr=fallbackMeta.closest('.acc-hdr')&&fallbackMeta.closest('.acc-hdr').querySelector('.acc-meta');
+          if(fallbackHdr) fallbackHdr.textContent=fallback.length+' scholars with behavior records';
         }
         wireStudentLinks(wrap,'S-detail');
-        animateListIn(wrap);
-        resolveHomeroom(id, function(resolvedId) {
-          DET_LIVE.homeroom = resolvedId;
-          initLiveDots(resolvedId, rosterRows);
-          startLiveColorChannel(resolvedId);
-          initDetLiveHover();
-        });
+        return;
       }
+      var totalInClass=rosterRows.length;
+      var withRecords=rosterRows.filter(function(r){return counts[r.student_name]>0;}).length;
+      var rosterHeader='<div style="display:flex;justify-content:space-between;align-items:center;'+
+        'padding:0 0 10px;border-bottom:1px solid var(--border);margin-bottom:8px">'+
+        '<div style="font-size:12px;color:var(--text2)">'+totalInClass+' scholars in class</div>'+
+        '<div style="font-size:12px;color:var(--text2)">'+withRecords+' with behavior records · '+
+          (totalInClass-withRecords)+' record-free</div>'+
+        '</div>';
+      rosterRows.sort(function(a,b){
+        var an=counts[a.student_name]||0;
+        var bn=counts[b.student_name]||0;
+        if(bn!==an) return bn-an;
+        return (a.last_name||'').localeCompare(b.last_name||'');
+      });
+      wrap.innerHTML='<div class="card">'+rosterHeader+
+        rosterRows.map(function(r){
+          var n=counts[r.student_name]||0;
+          return rosterRow(r.student_name,n,maxInc,n>0);
+        }).join('')+
+        '</div>';
+      var accMeta=document.querySelector('#acc-chev-det-roster');
+      if(accMeta){
+        var hdrLeft=accMeta.closest('.acc-hdr')&&accMeta.closest('.acc-hdr').querySelector('.acc-meta');
+        if(hdrLeft) hdrLeft.textContent=totalInClass+' scholars · '+withRecords+' with behavior records';
+      }
+      wireStudentLinks(wrap,'S-detail');
+      animateListIn(wrap);
+      resolveHomeroom(id, function(resolvedId) {
+        DET_LIVE.homeroom = resolvedId;
+        initLiveDots(resolvedId, rosterRows);
+        startLiveColorChannel(resolvedId);
+        initDetLiveHover();
+      });
     });
     // fetch and render individual incidents
     fetchClassIncidents(id, function(err, rows){
@@ -4119,7 +4203,7 @@ function openDet(id,live){
       }
       if(countEl) countEl.textContent=rows.length+' records';
       if(!rows.length){
-        listEl.innerHTML=emptyState('No incidents for this class', 'Incidents will appear as teachers log them.');
+        listEl.innerHTML=emptyState('No records for this class', 'Behavior records will appear as teachers log them.');
         return;
       }
       var onRefresh=function(){
