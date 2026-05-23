@@ -2697,7 +2697,7 @@ function bFA() {
             '<div style="display:flex;gap:8px;align-items:center">' +
               (r.home_contact ? '<span style="font-size:10px;color:var(--indigo);letter-spacing:.04em">Home yes</span>' : '<span style="font-size:10px;color:var(--text3)">—</span>') +
               (r.returned_to_activity ? '<span style="font-size:10px;color:var(--indigo)">Returned</span>' : '<span style="font-size:10px;color:var(--red)">Did not return</span>') +
-              '<span class="fa-chevron" style="color:var(--text3);font-size:14px;transition:transform .2s"></span>' +
+              '<span class="fa-chevron log-chevron">▾</span>' +
             '</div>' +
           '</div>' +
           '<div class="fa-detail" style="display:none;margin-top:12px;padding-top:12px;border-top:0.5px solid var(--border)">' +
@@ -2728,10 +2728,7 @@ function toggleFA(id) {
   var chevron = card.querySelector('.fa-chevron');
   var open    = detail.style.display !== 'none';
   detail.style.display  = open ? 'none' : 'block';
-  if (chevron) {
-    chevron.style.transform = open ? '' : 'rotate(90deg)';
-    chevron.textContent     = open ? '' : '';
-  }
+  if (chevron) chevron.classList.toggle('open', !open);
   card.style.borderLeft = open ? '' : '2px solid var(--indigo)';
 }
 
