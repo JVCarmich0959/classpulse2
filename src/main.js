@@ -3310,7 +3310,7 @@ function rosterRow(name, incCount, maxCount, hasInc){
         '</span>'+
         '<span style="font-size:13px;font-weight:800;font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;'+
           'color:'+(hasInc?barColor:'var(--text3)')+';flex-shrink:0;margin-left:8px">'+
-          (hasInc?incCount+(incCount===1?' incident':' incidents'):'No incidents')+
+          (hasInc?incCount+(incCount===1?' record':' records'):'No records')+
         '</span>'+
       '</div>'+
       (hasInc?
@@ -4031,60 +4031,81 @@ function openDet(id,live){
     fetchClassRoster(id,function(err,rosterRows){
       var wrap=document.getElementById('det-roster-wrap');
       if(!wrap) return;
-      var incCounts={};
-      var maxInc=0;
+      var counts={};
       if(c&&c.students){
-        c.students.forEach(function(s){
-          incCounts[s.name]=s.n;
-          if(s.n>maxInc) maxInc=s.n;
-        });
+        c.students.forEach(function(s){ counts[s.name]=s.n; });
       }
-      if(err||!rosterRows.length){
-        var fallback=c&&c.students?c.students:[];
-        wrap.innerHTML='<div class="card">'+
-          (fallback.length?fallback.map(function(s){return rosterRow(s.name,s.n,maxInc,true);}).join(''):emptyState('No scholars on record',''))+
+
+      // Merge quick-color transitions so the roster reflects every behavior
+      // record, not just full write-ups. Skips Green-with-no-doc (auto-return
+      // to baseline) and any transition already linked to a counted incident.
+      authedFetch('/rest/v1/color_transitions?homeroom=eq.'+encodeURIComponent(id)+
+        '&select=student,to_color,needs_documentation,incident_id&limit=2000')
+        .then(function(r){ return r.json(); })
+        .then(function(transitions){
+          (Array.isArray(transitions)?transitions:[]).forEach(function(t){
+            if(!t.student) return;
+            if(t.incident_id) return;
+            if(t.to_color==='Green' && !t.needs_documentation) return;
+            counts[t.student]=(counts[t.student]||0)+1;
+          });
+        })
+        .catch(function(){})
+        .then(renderRoster);
+
+      function renderRoster(){
+        var maxInc=0;
+        Object.keys(counts).forEach(function(name){
+          if(counts[name]>maxInc) maxInc=counts[name];
+        });
+
+        if(err||!rosterRows.length){
+          var fallback=c&&c.students?c.students:[];
+          wrap.innerHTML='<div class="card">'+
+            (fallback.length?fallback.map(function(s){return rosterRow(s.name,counts[s.name]||s.n,maxInc,true);}).join(''):emptyState('No scholars on record',''))+
+            '</div>';
+          var fallbackMeta=document.querySelector('#acc-chev-det-roster');
+          if(fallbackMeta){
+            var fallbackHdr=fallbackMeta.closest('.acc-hdr')&&fallbackMeta.closest('.acc-hdr').querySelector('.acc-meta');
+            if(fallbackHdr) fallbackHdr.textContent=fallback.length+' scholars with behavior records';
+          }
+          wireStudentLinks(wrap,'S-detail');
+          return;
+        }
+        var totalInClass=rosterRows.length;
+        var withRecords=rosterRows.filter(function(r){return counts[r.student_name]>0;}).length;
+        var rosterHeader='<div style="display:flex;justify-content:space-between;align-items:center;'+
+          'padding:0 0 10px;border-bottom:1px solid var(--border);margin-bottom:8px">'+
+          '<div style="font-size:12px;color:var(--text2)">'+totalInClass+' scholars in class</div>'+
+          '<div style="font-size:12px;color:var(--text2)">'+withRecords+' with behavior records · '+
+            (totalInClass-withRecords)+' record-free</div>'+
           '</div>';
-        var fallbackMeta=document.querySelector('#acc-chev-det-roster');
-        if(fallbackMeta){
-          var fallbackHdr=fallbackMeta.closest('.acc-hdr')&&fallbackMeta.closest('.acc-hdr').querySelector('.acc-meta');
-          if(fallbackHdr) fallbackHdr.textContent=fallback.length+' scholars with incidents';
+        rosterRows.sort(function(a,b){
+          var an=counts[a.student_name]||0;
+          var bn=counts[b.student_name]||0;
+          if(bn!==an) return bn-an;
+          return (a.last_name||'').localeCompare(b.last_name||'');
+        });
+        wrap.innerHTML='<div class="card">'+rosterHeader+
+          rosterRows.map(function(r){
+            var n=counts[r.student_name]||0;
+            return rosterRow(r.student_name,n,maxInc,n>0);
+          }).join('')+
+          '</div>';
+        var accMeta=document.querySelector('#acc-chev-det-roster');
+        if(accMeta){
+          var hdrLeft=accMeta.closest('.acc-hdr')&&accMeta.closest('.acc-hdr').querySelector('.acc-meta');
+          if(hdrLeft) hdrLeft.textContent=totalInClass+' scholars · '+withRecords+' with behavior records';
         }
         wireStudentLinks(wrap,'S-detail');
-        return;
+        animateListIn(wrap);
+        resolveHomeroom(id, function(resolvedId) {
+          DET_LIVE.homeroom = resolvedId;
+          initLiveDots(resolvedId, rosterRows);
+          startLiveColorChannel(resolvedId);
+          initDetLiveHover();
+        });
       }
-      var totalInClass=rosterRows.length;
-      var withIncidents=rosterRows.filter(function(r){return incCounts[r.student_name]>0;}).length;
-      var rosterHeader='<div style="display:flex;justify-content:space-between;align-items:center;'+
-        'padding:0 0 10px;border-bottom:1px solid var(--border);margin-bottom:8px">'+
-        '<div style="font-size:12px;color:var(--text2)">'+totalInClass+' scholars in class</div>'+
-        '<div style="font-size:12px;color:var(--text2)">'+withIncidents+' with logged incidents · '+
-          (totalInClass-withIncidents)+' incident-free</div>'+
-        '</div>';
-      rosterRows.sort(function(a,b){
-        var an=incCounts[a.student_name]||0;
-        var bn=incCounts[b.student_name]||0;
-        if(bn!==an) return bn-an;
-        return (a.last_name||'').localeCompare(b.last_name||'');
-      });
-      wrap.innerHTML='<div class="card">'+rosterHeader+
-        rosterRows.map(function(r){
-          var n=incCounts[r.student_name]||0;
-          return rosterRow(r.student_name,n,maxInc,n>0);
-        }).join('')+
-        '</div>';
-      var accMeta=document.querySelector('#acc-chev-det-roster');
-      if(accMeta){
-        var hdrLeft=accMeta.closest('.acc-hdr')&&accMeta.closest('.acc-hdr').querySelector('.acc-meta');
-        if(hdrLeft) hdrLeft.textContent=totalInClass+' scholars · '+withIncidents+' with incidents';
-      }
-      wireStudentLinks(wrap,'S-detail');
-      animateListIn(wrap);
-      resolveHomeroom(id, function(resolvedId) {
-        DET_LIVE.homeroom = resolvedId;
-        initLiveDots(resolvedId, rosterRows);
-        startLiveColorChannel(resolvedId);
-        initDetLiveHover();
-      });
     });
     // fetch and render individual incidents
     fetchClassIncidents(id, function(err, rows){
