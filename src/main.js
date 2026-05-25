@@ -6,6 +6,7 @@ import { openAcademicsEntry } from './views/admin/academics-enter.js';
 import { openAcademicsBinder } from './views/admin/academics-binder.js';
 import { openAcademicsMeeting } from './views/admin/academics-meeting.js';
 import { openAcademicsPlans } from './views/admin/academics-plans.js';
+import { openAcademicsCoach } from './views/admin/academics-coach.js';
 
 'use strict';
 
@@ -1210,6 +1211,7 @@ function updateNavActive(screenId){
     'S-academics-binder':'AN-dash',
     'S-academics-meeting':'AN-dash',
     'S-academics-plans':'AN-dash',
+    'S-academics-coach':'AN-dash',
     'S-teacher':'TN-log',
     'S-quick-color':'TN-qc',
     'S-log':'TN-log'
@@ -2674,6 +2676,8 @@ function renderAdmin(){
     if(mtg) mtg.addEventListener('click',function(){openAcademicsMeeting();});
     var pln=document.getElementById('acad-launch-plans');
     if(pln) pln.addEventListener('click',function(){openAcademicsPlans();});
+    var cch=document.getElementById('acad-launch-coach');
+    if(cch) cch.addEventListener('click',function(){openAcademicsCoach();});
   }
   if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">Error: Could not reach Supabase — showing cached data</div>'+body.innerHTML;
   if(t==='students') {
@@ -2873,8 +2877,10 @@ function bAC(){
     card('acad-launch-plans','Action Plans',
       'Reteach plans from your meetings. Track who\'s doing what, when to re-check, and how it landed.',
       'View Plans') +
-    '<div class="card" style="padding:14px;grid-column:1 / span 2;font-size:11px;color:var(--text3)">' +
-      '<strong>Coming next:</strong> Auto-linked reteach outcomes — when you enter a follow-up assessment, action plans get scored automatically.' +
+    '<div style="grid-column:1 / span 2">' +
+      card('acad-launch-coach','Coach Dashboard',
+        'School-wide academic health. KPIs, by-grade mastery rollup, reteach impact by teacher, and active plan status. The view your dean and instructional coach will live in.',
+        'Open Coach View') +
     '</div>' +
   '</div>';
 }
@@ -4482,6 +4488,7 @@ function backToAcademicsTab(){
 el('btn-binder-back') && el('btn-binder-back').addEventListener('click',backToAcademicsTab);
 el('btn-meeting-back') && el('btn-meeting-back').addEventListener('click',backToAcademicsTab);
 el('btn-plans-back') && el('btn-plans-back').addEventListener('click',backToAcademicsTab);
+el('btn-coach-back') && el('btn-coach-back').addEventListener('click',backToAcademicsTab);
 
 el('btn-det-log') && el('btn-det-log').addEventListener('click',function(){
   var hr=el('det-title').textContent;

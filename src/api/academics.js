@@ -665,6 +665,58 @@ function tryCompletionForCandidates(plan, candidates) {
   return tryNext();
 }
 
+// ── SCHOOL-WIDE FETCHES (COACH DASHBOARD) ───────────────────────────────────
+
+// All assessment events + their scores within a date range, used by the coach
+// dashboard to compute cross-grade/cross-teacher rollups in the browser.
+// At pilot scale (one school, single school year) this is a single round trip
+// per table; rollup logic stays client-side for fast iteration.
+//
+// opts: { schoolYear?, dateFrom?, dateTo? }
+// Returns: { events: [...], scores: [...], plans: [...] }
+export function fetchCoachDashboardData(opts, cb) {
+  opts = opts || {};
+  var schoolYear = opts.schoolYear || '2025-26';
+
+  var evParams = ['select=*', 'school_year=eq.' + encodeURIComponent(schoolYear),
+                  'order=administered_date.desc', 'limit=500'];
+  if (opts.dateFrom) evParams.push('administered_date=gte.' + encodeURIComponent(opts.dateFrom));
+  if (opts.dateTo)   evParams.push('administered_date=lte.' + encodeURIComponent(opts.dateTo));
+
+  var planParams = ['select=*,action_plan_students(clever_id)',
+                    'school_year=eq.' + encodeURIComponent(schoolYear),
+                    'order=created_at.desc', 'limit=500'];
+
+  var eventsP = authedFetch(REST + '/assessment_events?' + evParams.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) { return Array.isArray(rows) ? rows : []; });
+
+  var plansP = authedFetch(REST + '/action_plans?' + planParams.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) { return Array.isArray(rows) ? rows : []; });
+
+  // Scores: fetch only those tied to events in the window. We get the events
+  // first, then bulk-fetch scores by event_id in.() — keeps payload bounded.
+  return eventsP.then(function(events) {
+    var eventIds = events.map(function(e) { return e.id; });
+    var scoresP = eventIds.length
+      ? authedFetch(REST + '/academic_scores?select=*&assessment_event_id=in.(' +
+          eventIds.map(function(id) { return encodeURIComponent(id); }).join(',') + ')')
+        .then(function(r) { return r.json(); })
+        .then(function(rows) { return Array.isArray(rows) ? rows : []; })
+      : Promise.resolve([]);
+    return Promise.all([scoresP, plansP]).then(function(results) {
+      var out = { events: events, scores: results[0], plans: results[1] };
+      if (cb) cb(null, out);
+      return out;
+    });
+  }).catch(function(err) {
+    var out = { events: [], scores: [], plans: [], error: err };
+    if (cb) cb(err, out);
+    return out;
+  });
+}
+
 // ── BULK FETCH SCORES FOR MANY EVENTS ───────────────────────────────────────
 // PostgREST `in.()` filter on assessment_event_id. Used by the binder.
 // Returns: { 'cleverId|eventId': score row, ... }
