@@ -21,7 +21,7 @@ import {
 } from '../../main.js';
 import {
   fetchActionPlans, updateActionPlan, deleteActionPlan,
-  fetchStudentsByCleverIds
+  fetchStudentsByCleverIds, recomputeAllOutcomes
 } from '../../api/academics.js';
 
 var SCHOOL_YEAR = import.meta.env.VITE_SCHOOL_YEAR || '2025-26';
@@ -50,7 +50,11 @@ function renderShell() {
   var body = el('plans-body');
   if (!body) return;
   body.innerHTML =
-    '<div id="plans-tabs">' + renderTabs() + '</div>' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px">' +
+      '<div id="plans-tabs" style="flex:1">' + renderTabs() + '</div>' +
+      '<button id="plans-recompute" class="btn-secondary" style="font-size:11px;padding:6px 12px;white-space:nowrap" ' +
+        'title="Scan recent assessments and auto-link any plans that should be completed">↻ Recompute outcomes</button>' +
+    '</div>' +
     '<div id="plans-list" style="margin-top:14px">' +
       (V.loading
         ? '<div class="card">' + skeletonRows(5) + '</div>'
@@ -58,7 +62,32 @@ function renderShell() {
       ) +
     '</div>';
   wireTabs();
+  wireRecompute();
   if (!V.loading) wireList();
+}
+
+function wireRecompute() {
+  var btn = el('plans-recompute');
+  if (!btn) return;
+  btn.addEventListener('click', function() {
+    btn.disabled = true;
+    btn.textContent = 'Scanning…';
+    recomputeAllOutcomes({ schoolYear: SCHOOL_YEAR }, function(err, summary) {
+      btn.disabled = false;
+      btn.textContent = '↻ Recompute outcomes';
+      if (err) {
+        showToast('Recompute failed', 'error');
+        return;
+      }
+      var msg = summary.completed > 0
+        ? '✓ ' + summary.completed + ' plan' + (summary.completed === 1 ? '' : 's') +
+          ' auto-completed (' + summary.evaluated + ' checked)'
+        : 'Checked ' + summary.evaluated + ' active plan' +
+          (summary.evaluated === 1 ? '' : 's') + ' — none ready yet';
+      showToast(msg, summary.completed > 0 ? 'info' : 'info', 3500);
+      if (summary.completed > 0) loadData();
+    });
+  });
 }
 
 function renderTabs() {
@@ -190,10 +219,16 @@ function renderOutcome(plan) {
   var deltaText = hasDelta
     ? (delta > 0 ? '+' : '') + Math.round(delta * 10) / 10 + ' pts'
     : '—';
+  var isAuto = plan.follow_up_event_id && plan.outcome_notes &&
+    plan.outcome_notes.indexOf('Auto-completed') === 0;
+  var sourceLabel = isAuto ? 'Auto-completed' : 'Outcome';
 
   return '<div style="padding:8px 10px;background:var(--panel);border-radius:6px;margin-bottom:8px">' +
     '<div style="display:flex;justify-content:space-between;align-items:center">' +
-      '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Outcome</div>' +
+      '<div style="font-size:10px;color:' + (isAuto ? 'var(--navy)' : 'var(--text3)') +
+        ';text-transform:uppercase;letter-spacing:.06em;font-weight:' + (isAuto ? '700' : '400') + '">' +
+        (isAuto ? '✓ ' : '') + sourceLabel +
+      '</div>' +
       '<div style="font-size:14px;font-weight:700;color:' + deltaColor + '">' + deltaText + '</div>' +
     '</div>' +
     (plan.outcome_notes

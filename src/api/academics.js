@@ -378,6 +378,293 @@ export function deleteActionPlan(id, cb) {
     .catch(function(err) { if (cb) cb(err); throw err; });
 }
 
+// ── CLOSED-LOOP OUTCOME MATCHING ────────────────────────────────────────────
+// When a new score is entered, check whether it completes any active action
+// plans. A plan is "completed" by this score when:
+//   1. The score's student is targeted by the plan
+//   2. The plan's topic matches the new event's topic (case-insensitive,
+//      substring either direction)
+//   3. The plan has no follow_up_event_id yet (not already matched)
+//   4. ALL of the plan's target students have non-null scores on this event
+//   5. The plan has a source_assessment_event_id (so we can compute a delta)
+//
+// When all five conditions hit, the plan's follow_up_event_id is set, the
+// outcome_avg_delta is computed (mean of per-student percent-point gains
+// vs the source assessment), and status flips to 'complete'.
+//
+// Returns: { updatedPlans: [{plan, delta, perStudent: [...]}], errors: [...] }
+export function matchClosedLoop(score, event, cb) {
+  if (!score || !event || !score.clever_id || !event.id) {
+    if (cb) cb(null, { updatedPlans: [], errors: [] });
+    return Promise.resolve({ updatedPlans: [], errors: [] });
+  }
+
+  // Step 1: find plans this student is targeted by, active, no follow-up yet,
+  // with a source_assessment_event_id (so a delta is computable).
+  var planParams = [
+    'select=*,action_plan_students(clever_id)',
+    'status=eq.active',
+    'follow_up_event_id=is.null',
+    'source_assessment_event_id=not.is.null',
+    'action_plan_students.clever_id=eq.' + encodeURIComponent(score.clever_id)
+  ];
+
+  return authedFetch(REST + '/action_plans?' + planParams.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) {
+      var candidates = Array.isArray(rows) ? rows : [];
+      // PostgREST returns embedded action_plan_students filtered by the
+      // join clause, so candidates are only plans that contain this student.
+      // But re-filter defensively in case server semantics differ:
+      candidates = candidates.filter(function(p) {
+        var rels = p.action_plan_students || [];
+        return rels.some(function(rel) { return rel.clever_id === score.clever_id; });
+      });
+
+      // Topic match filter
+      candidates = candidates.filter(function(p) {
+        return topicsMatch(p.topic, event.topic);
+      });
+
+      if (!candidates.length) {
+        if (cb) cb(null, { updatedPlans: [], errors: [] });
+        return { updatedPlans: [], errors: [] };
+      }
+
+      // For each candidate plan, evaluate the closed-loop conditions.
+      // Note: action_plan_students embedded above was filtered to this student
+      // only. We need the FULL target set, so re-fetch for each plan.
+      return Promise.all(candidates.map(function(plan) {
+        return evaluatePlanForCompletion(plan, event)
+          .catch(function(err) {
+            return { plan: plan, error: err, completed: false };
+          });
+      })).then(function(results) {
+        var updatedPlans = [];
+        var errors = [];
+        results.forEach(function(r) {
+          if (r.error) errors.push({ planId: r.plan.id, error: r.error });
+          else if (r.completed) updatedPlans.push(r);
+        });
+        if (cb) cb(null, { updatedPlans: updatedPlans, errors: errors });
+        return { updatedPlans: updatedPlans, errors: errors };
+      });
+    })
+    .catch(function(err) {
+      if (cb) cb(err, { updatedPlans: [], errors: [{ error: err }] });
+      throw err;
+    });
+}
+
+// Re-runs the matcher across recent scores. Used by the Action Plans
+// "Recompute outcomes" button to catch up plans that didn't auto-complete
+// (e.g. scores entered before this feature shipped, or bulk paste edge cases).
+//
+// Strategy: pull all active plans with source_assessment_event_id set, then
+// for each plan, look at recent assessment events with matching topic in the
+// same school year, and check if any complete the plan.
+export function recomputeAllOutcomes(opts, cb) {
+  opts = opts || {};
+  var schoolYear = opts.schoolYear || '2025-26';
+
+  // Active plans needing a follow-up
+  var planParams = [
+    'select=*,action_plan_students(clever_id)',
+    'status=eq.active',
+    'follow_up_event_id=is.null',
+    'source_assessment_event_id=not.is.null',
+    'school_year=eq.' + encodeURIComponent(schoolYear),
+    'limit=200'
+  ];
+
+  return authedFetch(REST + '/action_plans?' + planParams.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(plans) {
+      plans = Array.isArray(plans) ? plans : [];
+      if (!plans.length) {
+        if (cb) cb(null, { evaluated: 0, completed: 0, plans: [] });
+        return { evaluated: 0, completed: 0, plans: [] };
+      }
+      // Need source assessment info to determine grade_level/subject scope
+      var sourceIds = [];
+      plans.forEach(function(p) {
+        if (p.source_assessment_event_id) sourceIds.push(p.source_assessment_event_id);
+      });
+      var uniqIds = Array.from(new Set(sourceIds));
+      var inClause = 'in.(' + uniqIds.map(function(id) { return encodeURIComponent(id); }).join(',') + ')';
+      return authedFetch(REST + '/assessment_events?select=*&id=' + inClause)
+        .then(function(r) { return r.json(); })
+        .then(function(srcEvents) {
+          var srcMap = {};
+          (Array.isArray(srcEvents) ? srcEvents : []).forEach(function(e) { srcMap[e.id] = e; });
+
+          // For each plan, find candidate follow-up events
+          return Promise.all(plans.map(function(plan) {
+            var src = srcMap[plan.source_assessment_event_id];
+            if (!src) return { plan: plan, completed: false, skipped: 'no source event' };
+            // Candidates: assessment_events with matching topic, same grade & subject,
+            // administered AFTER the source's date
+            var params = [
+              'select=*',
+              'grade_level=eq.' + encodeURIComponent(src.grade_level),
+              'subject=eq.' + encodeURIComponent(src.subject),
+              'administered_date=gt.' + encodeURIComponent(src.administered_date),
+              'order=administered_date.asc',
+              'limit=20'
+            ];
+            return authedFetch(REST + '/assessment_events?' + params.join('&'))
+              .then(function(r) { return r.json(); })
+              .then(function(candidateEvents) {
+                var matchingTopic = (Array.isArray(candidateEvents) ? candidateEvents : [])
+                  .filter(function(e) { return topicsMatch(plan.topic, e.topic); });
+                if (!matchingTopic.length) return { plan: plan, completed: false, skipped: 'no topic match' };
+                // Try each candidate in chronological order; stop at first completion
+                return tryCompletionForCandidates(plan, matchingTopic);
+              })
+              .catch(function(err) { return { plan: plan, error: err, completed: false }; });
+          }));
+        });
+    })
+    .then(function(results) {
+      var summary = {
+        evaluated: results.length,
+        completed: results.filter(function(r) { return r.completed; }).length,
+        plans: results
+      };
+      if (cb) cb(null, summary);
+      return summary;
+    })
+    .catch(function(err) {
+      if (cb) cb(err, { evaluated: 0, completed: 0, plans: [] });
+      throw err;
+    });
+}
+
+// ── INTERNALS ───────────────────────────────────────────────────────────────
+
+// Two topics match if either contains the other (case-insensitive, trimmed).
+function topicsMatch(a, b) {
+  if (!a || !b) return false;
+  var na = String(a).trim().toLowerCase();
+  var nb = String(b).trim().toLowerCase();
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  return na.indexOf(nb) >= 0 || nb.indexOf(na) >= 0;
+}
+
+function evaluatePlanForCompletion(plan, candidateEvent) {
+  // Need full target student list (the embedded action_plan_students was
+  // filtered to this score's student only when fetched via the join filter).
+  return authedFetch(REST + '/action_plan_students?select=clever_id&action_plan_id=eq.' +
+    encodeURIComponent(plan.id))
+    .then(function(r) { return r.json(); })
+    .then(function(students) {
+      var targetIds = (Array.isArray(students) ? students : []).map(function(s) { return s.clever_id; });
+      if (!targetIds.length) return { plan: plan, completed: false, reason: 'no targets' };
+
+      // Fetch this event's scores for those students
+      var inClause = 'in.(' + targetIds.map(function(id) {
+        return '"' + String(id).replace(/"/g, '\\"') + '"';
+      }).join(',') + ')';
+      return authedFetch(REST + '/academic_scores?select=clever_id,score' +
+        '&assessment_event_id=eq.' + encodeURIComponent(candidateEvent.id) +
+        '&clever_id=' + inClause)
+        .then(function(r) { return r.json(); })
+        .then(function(newScores) {
+          newScores = Array.isArray(newScores) ? newScores : [];
+          var newMap = {};
+          newScores.forEach(function(s) { newMap[s.clever_id] = s.score; });
+
+          // All target students must have a non-null score on this event
+          var allCovered = targetIds.every(function(cid) {
+            return newMap[cid] !== undefined && newMap[cid] !== null;
+          });
+          if (!allCovered) return { plan: plan, completed: false, reason: 'incomplete coverage' };
+
+          // Fetch source assessment + source scores
+          return Promise.all([
+            authedFetch(REST + '/assessment_events?select=*&id=eq.' +
+              encodeURIComponent(plan.source_assessment_event_id))
+              .then(function(r) { return r.json(); }),
+            authedFetch(REST + '/academic_scores?select=clever_id,score' +
+              '&assessment_event_id=eq.' + encodeURIComponent(plan.source_assessment_event_id) +
+              '&clever_id=' + inClause)
+              .then(function(r) { return r.json(); })
+          ]).then(function(results) {
+            var sourceEvent = (results[0] && results[0][0]) || null;
+            var sourceScores = Array.isArray(results[1]) ? results[1] : [];
+            if (!sourceEvent) return { plan: plan, completed: false, reason: 'source event missing' };
+
+            var srcMap = {};
+            sourceScores.forEach(function(s) { srcMap[s.clever_id] = s.score; });
+
+            var srcMax = Number(sourceEvent.max_score) || 100;
+            var newMax = Number(candidateEvent.max_score) || 100;
+            var perStudent = [];
+            var deltas = [];
+            targetIds.forEach(function(cid) {
+              var newPct = (Number(newMap[cid]) / newMax) * 100;
+              var srcRaw = srcMap[cid];
+              // If a student had no source score, skip them in the delta calc
+              if (srcRaw === undefined || srcRaw === null) {
+                perStudent.push({ clever_id: cid, new: newPct, source: null, delta: null });
+                return;
+              }
+              var srcPct = (Number(srcRaw) / srcMax) * 100;
+              var delta = newPct - srcPct;
+              deltas.push(delta);
+              perStudent.push({ clever_id: cid, new: newPct, source: srcPct, delta: delta });
+            });
+
+            if (!deltas.length) return { plan: plan, completed: false, reason: 'no source scores for any target' };
+
+            var avgDelta = deltas.reduce(function(a, d) { return a + d; }, 0) / deltas.length;
+            var rounded = Math.round(avgDelta * 10) / 10;
+
+            // Update the plan
+            return authedFetch(REST + '/action_plans?id=eq.' + encodeURIComponent(plan.id), {
+              method: 'PATCH',
+              headers: { 'Prefer': 'return=representation' },
+              body: JSON.stringify({
+                follow_up_event_id: candidateEvent.id,
+                outcome_avg_delta: rounded,
+                status: 'complete',
+                outcome_notes: 'Auto-completed: avg ' + (rounded > 0 ? '+' : '') + rounded +
+                  ' pts on "' + candidateEvent.title + '" (' + candidateEvent.administered_date + ')'
+              })
+            }).then(function(r) {
+              if (!r.ok) throw new Error('Plan update failed: HTTP ' + r.status);
+              return r.json();
+            }).then(function(updated) {
+              return {
+                plan: (updated && updated[0]) || plan,
+                completed: true,
+                delta: rounded,
+                perStudent: perStudent,
+                followUpEvent: candidateEvent
+              };
+            });
+          });
+        });
+    });
+}
+
+function tryCompletionForCandidates(plan, candidates) {
+  // Try in chronological order; resolve at first successful completion
+  var idx = 0;
+  function tryNext() {
+    if (idx >= candidates.length) {
+      return Promise.resolve({ plan: plan, completed: false, reason: 'no candidate completed' });
+    }
+    var candidate = candidates[idx++];
+    return evaluatePlanForCompletion(plan, candidate).then(function(result) {
+      if (result.completed) return result;
+      return tryNext();
+    });
+  }
+  return tryNext();
+}
+
 // ── BULK FETCH SCORES FOR MANY EVENTS ───────────────────────────────────────
 // PostgREST `in.()` filter on assessment_event_id. Used by the binder.
 // Returns: { 'cleverId|eventId': score row, ... }
