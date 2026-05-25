@@ -24,7 +24,8 @@ import {
 import {
   fetchAssessmentEvents, createAssessmentEvent,
   fetchRosterByGrade, fetchScoresForAssessment,
-  upsertScore, deleteScore, computeProficiency
+  upsertScore, deleteScore, computeProficiency,
+  matchClosedLoop
 } from '../../api/academics.js';
 
 var SCHOOL_YEAR = import.meta.env.VITE_SCHOOL_YEAR || '2025-26';
@@ -449,6 +450,19 @@ function saveScore(cid, score) {
     V.scores[cid] = saved;
     rerenderRow(cid, false);
     updateSub();
+    // Closed-loop: check if this save completes any active action plans
+    // for this student on this topic. Fires in the background; errors are
+    // swallowed (matching is opportunistic, not required for save success).
+    if (score !== null) {
+      matchClosedLoop(saved, V.currentEvent, function(_matchErr, result) {
+        if (!result || !result.updatedPlans || !result.updatedPlans.length) return;
+        result.updatedPlans.forEach(function(r) {
+          var sign = r.delta >= 0 ? '+' : '';
+          showToast('✓ Plan "' + r.plan.topic + '" auto-completed (' + sign + r.delta + ' pts)',
+                    r.delta >= 0 ? 'info' : 'error', 4000);
+        });
+      });
+    }
   });
 }
 
