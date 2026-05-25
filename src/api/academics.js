@@ -175,3 +175,78 @@ export function deleteScore(scoreId, cb) {
     })
     .catch(function(err) { if (cb) cb(err); throw err; });
 }
+
+// ── BULK FETCH SCORES FOR MANY EVENTS ───────────────────────────────────────
+// PostgREST `in.()` filter on assessment_event_id. Used by the binder.
+// Returns: { 'cleverId|eventId': score row, ... }
+export function fetchScoresForEvents(eventIds, cb) {
+  if (!eventIds || !eventIds.length) {
+    if (cb) cb(null, {});
+    return Promise.resolve({});
+  }
+  // PostgREST `in` syntax: in.(id1,id2,id3)
+  var inClause = 'in.(' + eventIds.map(function(id) { return encodeURIComponent(id); }).join(',') + ')';
+  var params = [
+    'select=id,clever_id,assessment_event_id,score,proficiency,notes,recorded_at,recorded_by',
+    'assessment_event_id=' + inClause
+  ];
+  return authedFetch(REST + '/academic_scores?' + params.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) {
+      var map = {};
+      (Array.isArray(rows) ? rows : []).forEach(function(r) {
+        map[r.clever_id + '|' + r.assessment_event_id] = r;
+      });
+      if (cb) cb(null, map);
+      return map;
+    })
+    .catch(function(err) { if (cb) cb(err, {}); throw err; });
+}
+
+// ── BINDER DATA FETCH ───────────────────────────────────────────────────────
+// One call to assemble everything the binder grid needs: events (columns),
+// roster (rows), and scores (cells). Parallel fetches under the hood.
+//
+// opts: { gradeLevel, subject, dateFrom?, dateTo?, schoolYear?, limit? }
+// Returns: { events: [...], roster: [...], scoresByCell: { 'cleverId|eventId': scoreRow }, error: optional }
+export function fetchBinderData(opts, cb) {
+  opts = opts || {};
+  // 1. Fetch events first so we know which event_ids to ask for scores on.
+  var eventOpts = {
+    gradeLevel: opts.gradeLevel,
+    subject: opts.subject,
+    schoolYear: opts.schoolYear,
+    limit: opts.limit || 50
+  };
+  var eventParams = ['select=*', 'order=administered_date.asc,created_at.asc'];
+  if (eventOpts.gradeLevel) eventParams.push('grade_level=eq.' + encodeURIComponent(eventOpts.gradeLevel));
+  if (eventOpts.subject)    eventParams.push('subject=eq.' + encodeURIComponent(eventOpts.subject));
+  if (eventOpts.schoolYear) eventParams.push('school_year=eq.' + encodeURIComponent(eventOpts.schoolYear));
+  if (opts.dateFrom)        eventParams.push('administered_date=gte.' + encodeURIComponent(opts.dateFrom));
+  if (opts.dateTo)          eventParams.push('administered_date=lte.' + encodeURIComponent(opts.dateTo));
+  eventParams.push('limit=' + (eventOpts.limit || 50));
+
+  var eventsPromise = authedFetch(REST + '/assessment_events?' + eventParams.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) { return Array.isArray(rows) ? rows : []; });
+
+  var rosterPromise = fetchRosterByGrade(opts.gradeLevel, { schoolYear: opts.schoolYear });
+
+  return Promise.all([eventsPromise, rosterPromise])
+    .then(function(results) {
+      var events = results[0];
+      var roster = results[1];
+      // Now fetch scores for those events.
+      var eventIds = events.map(function(e) { return e.id; });
+      return fetchScoresForEvents(eventIds).then(function(scoresByCell) {
+        var out = { events: events, roster: roster, scoresByCell: scoresByCell };
+        if (cb) cb(null, out);
+        return out;
+      });
+    })
+    .catch(function(err) {
+      var out = { events: [], roster: [], scoresByCell: {}, error: err };
+      if (cb) cb(err, out);
+      return out;
+    });
+}
