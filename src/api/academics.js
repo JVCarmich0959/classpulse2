@@ -102,6 +102,33 @@ export function fetchRosterByGrade(gradeLevel, opts, cb) {
     .catch(function(err) { if (cb) cb(err, []); throw err; });
 }
 
+// Resolve a list of clever_ids to student records. Used by views that
+// need to show names for arbitrary student sets (e.g. action plans that
+// span grades). Cap large lists in the caller.
+export function fetchStudentsByCleverIds(cleverIds, cb) {
+  if (!cleverIds || !cleverIds.length) {
+    if (cb) cb(null, {});
+    return Promise.resolve({});
+  }
+  var inClause = 'in.(' + cleverIds.map(function(id) {
+    // Wrap each id in quotes for PostgREST when the value has special chars
+    return '"' + String(id).replace(/"/g, '\\"') + '"';
+  }).join(',') + ')';
+  var params = [
+    'select=clever_id,student_name,first_name,last_name,homeroom,grade',
+    'clever_id=' + inClause
+  ];
+  return authedFetch(REST + '/students?' + params.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) {
+      var map = {};
+      (Array.isArray(rows) ? rows : []).forEach(function(s) { map[s.clever_id] = s; });
+      if (cb) cb(null, map);
+      return map;
+    })
+    .catch(function(err) { if (cb) cb(err, {}); throw err; });
+}
+
 // ── SCORES ──────────────────────────────────────────────────────────────────
 
 // All scores for an assessment, keyed by clever_id for fast lookup in render.
@@ -166,6 +193,181 @@ export function upsertScore(scoreData, cb) {
 // than marking absent — absent is score=null, not a deleted row).
 export function deleteScore(scoreId, cb) {
   return authedFetch(REST + '/academic_scores?id=eq.' + encodeURIComponent(scoreId), {
+    method: 'DELETE',
+    headers: { 'Prefer': 'return=minimal' }
+  })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (cb) cb(null);
+    })
+    .catch(function(err) { if (cb) cb(err); throw err; });
+}
+
+// ── DATA MEETINGS ───────────────────────────────────────────────────────────
+
+// Create a new data_meeting row. Returns the created row including its id,
+// which is needed to attach action plans to the meeting.
+export function createDataMeeting(data, cb) {
+  var row = Object.assign({
+    meeting_date: new Date().toISOString().slice(0, 10),
+    facilitator_email: (SESSION && SESSION.email) || null,
+    attendees: [],
+    school_year: '2025-26'
+  }, data || {});
+
+  return authedFetch(REST + '/data_meetings', {
+    method: 'POST',
+    headers: { 'Prefer': 'return=representation' },
+    body: JSON.stringify(row)
+  })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(rows) {
+      var created = rows && rows[0];
+      if (cb) cb(null, created);
+      return created;
+    })
+    .catch(function(err) { if (cb) cb(err); throw err; });
+}
+
+// Patch a meeting (typically: agenda_notes when meeting ends).
+export function updateDataMeeting(id, patch, cb) {
+  return authedFetch(REST + '/data_meetings?id=eq.' + encodeURIComponent(id), {
+    method: 'PATCH',
+    headers: { 'Prefer': 'return=minimal' },
+    body: JSON.stringify(patch)
+  })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (cb) cb(null);
+    })
+    .catch(function(err) { if (cb) cb(err); throw err; });
+}
+
+// Recent meetings for a grade × subject (used to find "last meeting" so the
+// current meeting can review last meeting's plans).
+export function fetchRecentMeetings(opts, cb) {
+  opts = opts || {};
+  var params = ['select=*', 'order=meeting_date.desc,created_at.desc'];
+  if (opts.gradeLevel) params.push('grade_level=eq.' + encodeURIComponent(opts.gradeLevel));
+  if (opts.subject)    params.push('subject=eq.' + encodeURIComponent(opts.subject));
+  if (opts.schoolYear) params.push('school_year=eq.' + encodeURIComponent(opts.schoolYear));
+  params.push('limit=' + (opts.limit || 10));
+
+  return authedFetch(REST + '/data_meetings?' + params.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) {
+      var data = Array.isArray(rows) ? rows : [];
+      if (cb) cb(null, data);
+      return data;
+    })
+    .catch(function(err) { if (cb) cb(err, []); throw err; });
+}
+
+// ── ACTION PLANS ────────────────────────────────────────────────────────────
+
+// Atomically create an action plan + its targeted students. Two-step insert
+// since PostgREST doesn't support nested-table inserts. Rolls back the plan
+// if the student-attach step fails so we never leave orphan plans.
+//
+// planData: { data_meeting_id, topic, source_assessment_event_id, reteach_strategy,
+//             description, owner_email, target_check_date, school_year }
+// cleverIds: array of clever_id strings (the students being targeted)
+export function createActionPlan(planData, cleverIds, cb) {
+  var row = Object.assign({
+    owner_email: (SESSION && SESSION.email) || 'unknown',
+    status: 'active',
+    school_year: '2025-26'
+  }, planData || {});
+
+  return authedFetch(REST + '/action_plans', {
+    method: 'POST',
+    headers: { 'Prefer': 'return=representation' },
+    body: JSON.stringify(row)
+  })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(rows) {
+      var plan = rows && rows[0];
+      if (!plan) throw new Error('Plan insert returned no row');
+      if (!cleverIds || !cleverIds.length) {
+        if (cb) cb(null, plan);
+        return plan;
+      }
+      var assoc = cleverIds.map(function(cid) {
+        return { action_plan_id: plan.id, clever_id: cid };
+      });
+      return authedFetch(REST + '/action_plan_students', {
+        method: 'POST',
+        headers: { 'Prefer': 'return=minimal' },
+        body: JSON.stringify(assoc)
+      }).then(function(r2) {
+        if (!r2.ok) {
+          return authedFetch(REST + '/action_plans?id=eq.' + encodeURIComponent(plan.id), {
+            method: 'DELETE',
+            headers: { 'Prefer': 'return=minimal' }
+          }).then(function() { throw new Error('Student attach failed; plan rolled back'); });
+        }
+        if (cb) cb(null, plan);
+        return plan;
+      });
+    })
+    .catch(function(err) { if (cb) cb(err); throw err; });
+}
+
+// Patch an action plan (status, outcome notes, outcome_avg_delta, etc.)
+export function updateActionPlan(id, patch, cb) {
+  return authedFetch(REST + '/action_plans?id=eq.' + encodeURIComponent(id), {
+    method: 'PATCH',
+    headers: { 'Prefer': 'return=representation' },
+    body: JSON.stringify(patch)
+  })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(rows) {
+      var updated = rows && rows[0];
+      if (cb) cb(null, updated);
+      return updated;
+    })
+    .catch(function(err) { if (cb) cb(err); throw err; });
+}
+
+// Fetch action plans + their targeted students in one go via PostgREST
+// foreign-table embedding.
+//
+// opts: { status?, ownerEmail?, dataMeetingId?, schoolYear?, limit? }
+// Returns: [{ ...plan, action_plan_students: [{clever_id}, ...] }]
+export function fetchActionPlans(opts, cb) {
+  opts = opts || {};
+  var params = [
+    'select=*,action_plan_students(clever_id)',
+    'order=created_at.desc'
+  ];
+  if (opts.status)         params.push('status=eq.' + encodeURIComponent(opts.status));
+  if (opts.ownerEmail)     params.push('owner_email=eq.' + encodeURIComponent(opts.ownerEmail));
+  if (opts.dataMeetingId)  params.push('data_meeting_id=eq.' + encodeURIComponent(opts.dataMeetingId));
+  if (opts.schoolYear)     params.push('school_year=eq.' + encodeURIComponent(opts.schoolYear));
+  params.push('limit=' + (opts.limit || 100));
+
+  return authedFetch(REST + '/action_plans?' + params.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) {
+      var data = Array.isArray(rows) ? rows : [];
+      if (cb) cb(null, data);
+      return data;
+    })
+    .catch(function(err) { if (cb) cb(err, []); throw err; });
+}
+
+// Delete an action plan. Cascades to action_plan_students via FK.
+export function deleteActionPlan(id, cb) {
+  return authedFetch(REST + '/action_plans?id=eq.' + encodeURIComponent(id), {
     method: 'DELETE',
     headers: { 'Prefer': 'return=minimal' }
   })
