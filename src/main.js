@@ -4,6 +4,8 @@ import { checkInviteToken } from './auth/session.js';
 import { openStudent, wireStudentLinks, stuNameLink } from './views/admin/student.js';
 import { openAcademicsEntry } from './views/admin/academics-enter.js';
 import { openAcademicsBinder } from './views/admin/academics-binder.js';
+import { openAcademicsMeeting } from './views/admin/academics-meeting.js';
+import { openAcademicsPlans } from './views/admin/academics-plans.js';
 
 'use strict';
 
@@ -1206,6 +1208,8 @@ function updateNavActive(screenId){
     'S-student':'AN-classes',
     'S-academics':'AN-dash',
     'S-academics-binder':'AN-dash',
+    'S-academics-meeting':'AN-dash',
+    'S-academics-plans':'AN-dash',
     'S-teacher':'TN-log',
     'S-quick-color':'TN-qc',
     'S-log':'TN-log'
@@ -2666,6 +2670,10 @@ function renderAdmin(){
     if(ent) ent.addEventListener('click',function(){openAcademicsEntry();});
     var bin=document.getElementById('acad-launch-binder');
     if(bin) bin.addEventListener('click',function(){openAcademicsBinder();});
+    var mtg=document.getElementById('acad-launch-meeting');
+    if(mtg) mtg.addEventListener('click',function(){openAcademicsMeeting();});
+    var pln=document.getElementById('acad-launch-plans');
+    if(pln) pln.addEventListener('click',function(){openAcademicsPlans();});
   }
   if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">Error: Could not reach Supabase — showing cached data</div>'+body.innerHTML;
   if(t==='students') {
@@ -2843,29 +2851,30 @@ function toggleFA(id) {
 
 
 // Academics tab — launchers for the DDI workflow surfaces.
-// Tuesday meeting mode + action plans land in subsequent PRs.
+// Closed-loop reteach outcome tracking lands in the next PR.
 function bAC(){
+  function card(id, title, body, cta){
+    return '<div class="card" style="padding:18px">' +
+      '<div style="font-size:14px;font-weight:600;margin-bottom:6px">'+title+'</div>' +
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:14px;min-height:50px">'+body+'</div>' +
+      '<button id="'+id+'" class="btn-primary" style="padding:10px 16px;font-weight:600">'+cta+' →</button>' +
+    '</div>';
+  }
   return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
-    '<div class="card" style="padding:18px">' +
-      '<div style="font-size:14px;font-weight:600;margin-bottom:6px">Score Entry</div>' +
-      '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">' +
-        'Record exit ticket and quiz scores. Replaces the spreadsheet — keyboard-driven, auto-saves, supports bulk paste from Excel.' +
-      '</div>' +
-      '<button id="acad-launch-enter" class="btn-primary" style="padding:10px 16px;font-weight:600">' +
-        'Enter Scores →' +
-      '</button>' +
-    '</div>' +
-    '<div class="card" style="padding:18px">' +
-      '<div style="font-size:14px;font-weight:600;margin-bottom:6px">Data Binder</div>' +
-      '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">' +
-        'The grid for your Tuesday meeting. Color-coded mastery, lowest performers at top, drill into any cell.' +
-      '</div>' +
-      '<button id="acad-launch-binder" class="btn-primary" style="padding:10px 16px;font-weight:600">' +
-        'Open Binder →' +
-      '</button>' +
-    '</div>' +
-    '<div class="card" style="padding:18px;grid-column:1 / span 2;font-size:11px;color:var(--text3)">' +
-      '<strong>Coming soon:</strong> Tuesday meeting mode · Action plans · Auto-tracked reteach outcomes.' +
+    card('acad-launch-enter','Score Entry',
+      'Record exit ticket and quiz scores. Keyboard-driven, auto-saves, bulk paste from Excel.',
+      'Enter Scores') +
+    card('acad-launch-binder','Data Binder',
+      'Students × assessments grid with color-coded mastery. Sort by lowest performers for the meeting.',
+      'Open Binder') +
+    card('acad-launch-meeting','Tuesday Meeting',
+      'Run your weekly DDI meeting. Bottom 5 auto-flagged, create action plans live, capture meeting notes.',
+      'Start Meeting') +
+    card('acad-launch-plans','Action Plans',
+      'Reteach plans from your meetings. Track who\'s doing what, when to re-check, and how it landed.',
+      'View Plans') +
+    '<div class="card" style="padding:14px;grid-column:1 / span 2;font-size:11px;color:var(--text3)">' +
+      '<strong>Coming next:</strong> Auto-linked reteach outcomes — when you enter a follow-up assessment, action plans get scored automatically.' +
     '</div>' +
   '</div>';
 }
@@ -4463,12 +4472,16 @@ el('btn-acad-back') && el('btn-acad-back').addEventListener('click',function(){
   renderAdmin();
 });
 
-el('btn-binder-back') && el('btn-binder-back').addEventListener('click',function(){
+function backToAcademicsTab(){
   STATE.adminTab='academics';
   showScreen('S-admin',true);
   document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='academics');});
   renderAdmin();
-});
+}
+
+el('btn-binder-back') && el('btn-binder-back').addEventListener('click',backToAcademicsTab);
+el('btn-meeting-back') && el('btn-meeting-back').addEventListener('click',backToAcademicsTab);
+el('btn-plans-back') && el('btn-plans-back').addEventListener('click',backToAcademicsTab);
 
 el('btn-det-log') && el('btn-det-log').addEventListener('click',function(){
   var hr=el('det-title').textContent;
