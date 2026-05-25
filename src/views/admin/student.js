@@ -1,5 +1,6 @@
 import { SB_URL, SB_KEY } from '../../config.js';
 import { SESSION, showScreen, escHtml, fetchStudentIncidents, renderIncidentList, setStuPrevScreen, getStuPrevScreen, drawLine, wireHeatCard, displayBehavior, skeletonKpis, skeletonRows, animateListIn, showToast, emptyState, authedFetch, buildAcc } from '../../main.js';
+import { fetchStudentAcademics, fetchActionPlansForStudent } from '../../api/academics.js';
 
 // -- HELPERS ------------------------------------------------------------------
 
@@ -406,13 +407,19 @@ function renderProfile(name, stu, incidents, faRows, accRows, body) {
       '</div>';
   }
 
+  // Academics — lazy loaded after render. Renders skeleton placeholder here;
+  // actual fetch + render happens in the post-mount section so it doesn't
+  // block the initial page paint.
+  var academicsHtml = '<div id="stu-academics-wrap">' + skeletonRows(3) + '</div>';
+
   // Assemble layout
   var primaryHtml =
-    buildAcc('stu', 'timeline', 'Behavioral timeline', (total + qcCount) + ' events', timelineHtml, true) +
-    buildAcc('stu', 'blocks',   'Block pattern',       'by specials class',            heatHtml,     true) +
-    buildAcc('stu', 'pattern',  'Day/time heatmap',    '',                             patternHtml,  false) +
-    buildAcc('stu', 'trend',    'Weekly trend',        '',                             weeklyHtml,   false) +
-    buildAcc('stu', 'firstaid', 'First aid / injury log', faRows.length + ' records', faHtml,       false);
+    buildAcc('stu', 'timeline',  'Behavioral timeline', (total + qcCount) + ' events', timelineHtml, true) +
+    buildAcc('stu', 'academics', 'Academic performance', 'recent scores + trend',       academicsHtml, true) +
+    buildAcc('stu', 'blocks',    'Block pattern',       'by specials class',            heatHtml,     false) +
+    buildAcc('stu', 'pattern',   'Day/time heatmap',    '',                             patternHtml,  false) +
+    buildAcc('stu', 'trend',     'Weekly trend',        '',                             weeklyHtml,   false) +
+    buildAcc('stu', 'firstaid',  'First aid / injury log', faRows.length + ' records', faHtml,       false);
 
   var sidebarHtml = '';
   if (isAdmin) {
@@ -482,6 +489,214 @@ function renderProfile(name, stu, incidents, faRows, accRows, body) {
 
   wireStudentLinks(body, 'S-student');
   animateListIn(listEl);
+
+  // Academics section — fetch in parallel with the rest, render into the
+  // placeholder when both calls resolve. Falls back gracefully if the student
+  // has no clever_id (older roster row) or no academic data yet.
+  loadAcademicsSection(stu);
+}
+
+// ── ACADEMICS SECTION ───────────────────────────────────────────────────────
+// Renders into #stu-academics-wrap. Self-contained — own data fetch, own
+// render, own error handling. Does not block the primary profile render.
+function loadAcademicsSection(stu) {
+  var wrap = document.getElementById('stu-academics-wrap');
+  if (!wrap) return;
+  var cleverId = stu && stu.clever_id;
+  if (!cleverId) {
+    wrap.innerHTML = emptyState('No academic data available',
+      'This scholar has no clever_id on file, so academic scores can’t be joined.');
+    return;
+  }
+  Promise.all([
+    fetchStudentAcademics(cleverId),
+    fetchActionPlansForStudent(cleverId)
+  ]).then(function(results) {
+    var scores = results[0] || [];
+    var plans  = results[1] || [];
+    wrap.innerHTML = renderAcademicsSection(scores, plans);
+    wireAcademicsSection(wrap);
+  }).catch(function() {
+    wrap.innerHTML = emptyState('Could not load academic data',
+      'Check your connection and refresh.');
+  });
+}
+
+function renderAcademicsSection(scores, plans) {
+  if (!scores.length && !plans.length) {
+    return emptyState('No academic records yet',
+      'When teachers enter exit ticket and quiz scores for this scholar, they’ll show here.');
+  }
+
+  // KPIs — overall avg, # assessments, plans active/complete
+  var nonAbsent = scores.filter(function(s) { return s.score !== null && s.score !== undefined; });
+  var avgPct = null;
+  if (nonAbsent.length) {
+    var pctSum = nonAbsent.reduce(function(a, s) {
+      var max = (s.assessment_event && Number(s.assessment_event.max_score)) || 100;
+      return a + (Number(s.score) / max) * 100;
+    }, 0);
+    avgPct = Math.round(pctSum / nonAbsent.length);
+  }
+  var activePlans = plans.filter(function(p) { return p.status === 'active'; });
+  var completedPlans = plans.filter(function(p) { return p.status !== 'active'; });
+
+  var kpiHtml =
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px">' +
+      academicKpi('Overall avg', avgPct !== null ? avgPct + '%' : '—',
+                  avgPct === null ? null : avgPct >= 80 ? 'green' : avgPct >= 60 ? 'yellow' : 'red') +
+      academicKpi('Assessments', String(scores.length), null) +
+      academicKpi('Active plans', String(activePlans.length), activePlans.length ? 'navy' : null) +
+      academicKpi('Completed', String(completedPlans.length), null) +
+    '</div>';
+
+  // Mini trend sparkline (last 10 chronologically)
+  var trendHtml = renderMiniTrend(scores);
+
+  // Recent assessment list with proficiency dots
+  var assessmentsHtml = scores.length
+    ? '<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px">Recent assessments</div>' +
+      '<div class="card" style="padding:4px 0">' +
+        scores.slice(0, 10).map(function(s) { return renderAcademicRow(s); }).join('') +
+      '</div>'
+    : '';
+
+  // Active plans block
+  var plansHtml = activePlans.length
+    ? '<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px">Active action plans</div>' +
+      activePlans.map(function(p) { return renderActivePlanCard(p); }).join('')
+    : '';
+
+  // Completed plans summary (compact)
+  var doneHtml = completedPlans.length
+    ? '<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px">Completed plans</div>' +
+      '<div class="card" style="padding:6px 10px">' +
+        completedPlans.slice(0, 5).map(function(p) {
+          var delta = p.outcome_avg_delta;
+          var deltaText = (delta !== null && delta !== undefined)
+            ? (delta > 0 ? '+' : '') + Math.round(delta * 10) / 10 + ' pts'
+            : '—';
+          var deltaColor = (delta > 0) ? '#287f6c' : (delta < 0) ? '#a82828' : 'var(--text3)';
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:11px">' +
+            '<span>' + escHtml(p.topic) + '</span>' +
+            '<span style="font-weight:700;color:' + deltaColor + '">' + deltaText + '</span>' +
+          '</div>';
+        }).join('') +
+      '</div>'
+    : '';
+
+  return kpiHtml + trendHtml + assessmentsHtml + plansHtml + doneHtml;
+}
+
+function academicKpi(label, value, colorTone) {
+  var colors = { green: '#287f6c', yellow: '#8a7314', red: '#a82828', navy: 'var(--navy)' };
+  var color = colorTone ? colors[colorTone] : 'var(--text)';
+  return '<div class="kpi" style="padding:8px 10px">' +
+    '<div class="lbl" style="font-size:9px">' + escHtml(label) + '</div>' +
+    '<div class="val" style="font-size:18px;color:' + color + '">' + value + '</div>' +
+  '</div>';
+}
+
+function renderMiniTrend(scores) {
+  var nonAbsent = scores.filter(function(s) { return s.score !== null && s.score !== undefined; });
+  if (nonAbsent.length < 2) return '';
+  // Chronological order (oldest first)
+  var chrono = nonAbsent.slice().sort(function(a, b) {
+    return new Date(a.recorded_at) - new Date(b.recorded_at);
+  });
+  // Last 10
+  var pts = chrono.slice(-10).map(function(s) {
+    var max = (s.assessment_event && Number(s.assessment_event.max_score)) || 100;
+    return Math.max(0, Math.min(100, (Number(s.score) / max) * 100));
+  });
+  var n = pts.length;
+  if (n < 2) return '';
+  var W = 240, H = 40, P = 4;
+  var step = (W - 2 * P) / (n - 1);
+  var d = pts.map(function(y, i) {
+    var x = P + i * step;
+    var yPos = H - P - (y / 100) * (H - 2 * P);
+    return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + yPos.toFixed(1);
+  }).join(' ');
+  var last = pts[n - 1];
+  var first = pts[0];
+  var trendColor = (last - first) > 5 ? '#287f6c' : (last - first) < -5 ? '#a82828' : 'var(--text3)';
+  return '<div class="card" style="padding:8px 10px;display:flex;align-items:center;gap:10px">' +
+    '<div style="font-size:10px;color:var(--text3)">Trend</div>' +
+    '<svg width="' + W + '" height="' + H + '" style="display:block">' +
+      '<path d="' + d + '" stroke="' + trendColor + '" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+      pts.map(function(y, i) {
+        var x = P + i * step;
+        var yPos = H - P - (y / 100) * (H - 2 * P);
+        return '<circle cx="' + x.toFixed(1) + '" cy="' + yPos.toFixed(1) + '" r="2" fill="' + trendColor + '"/>';
+      }).join('') +
+    '</svg>' +
+    '<div style="font-size:11px;color:' + trendColor + ';font-weight:700">' +
+      (last > first ? '+' : '') + Math.round(last - first) + ' pts' +
+    '</div>' +
+  '</div>';
+}
+
+function renderAcademicRow(s) {
+  var ev = s.assessment_event || {};
+  var max = Number(ev.max_score) || 100;
+  var isAbsent = (s.score === null || s.score === undefined);
+  var pct = isAbsent ? null : Math.round((Number(s.score) / max) * 100);
+  var dotColor = isAbsent ? 'transparent'
+               : s.proficiency === 'green' ? '#4ABFA3'
+               : s.proficiency === 'yellow' ? '#E8C547'
+               : s.proficiency === 'red' ? '#D63B3B'
+               : 'var(--border)';
+  var dotStyle = isAbsent
+    ? 'background:transparent;border:1px dashed var(--text3)'
+    : 'background:' + dotColor;
+
+  return '<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:0.5px solid var(--border)">' +
+    '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0;' + dotStyle + '"></span>' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+        escHtml(ev.title || 'Untitled') +
+      '</div>' +
+      '<div style="font-size:10px;color:var(--text3)">' +
+        escHtml((ev.subject || '—')) + ' · ' + escHtml(ev.administered_date || '—') +
+      '</div>' +
+    '</div>' +
+    '<div style="font-size:13px;font-weight:700;color:' +
+      (isAbsent ? 'var(--text3)' : 'var(--text)') + '">' +
+      (isAbsent ? 'ABS' : (s.score + '/' + max)) +
+    '</div>' +
+    '<div style="font-size:10px;color:var(--text3);min-width:35px;text-align:right">' +
+      (pct !== null ? pct + '%' : '') +
+    '</div>' +
+  '</div>';
+}
+
+function renderActivePlanCard(plan) {
+  var checkText = '';
+  if (plan.target_check_date) {
+    var d = new Date(plan.target_check_date + 'T12:00:00');
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var overdue = d < today;
+    checkText = '<span style="font-size:10px;color:' + (overdue ? '#a82828' : 'var(--text3)') + '">' +
+      (overdue ? '⚠ Check due ' : 'Check ') + plan.target_check_date + '</span>';
+  }
+  return '<div class="card" style="padding:10px;margin-bottom:6px;border-left:3px solid var(--navy)">' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
+      '<div style="flex:1">' +
+        '<div style="font-size:12px;font-weight:700">' + escHtml(plan.topic) + '</div>' +
+        (plan.description ? '<div style="font-size:10px;color:var(--text2);margin-top:2px">' + escHtml(plan.description) + '</div>' : '') +
+      '</div>' +
+      '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(39,26,112,.12);color:var(--navy);text-transform:uppercase;letter-spacing:.06em;flex-shrink:0">Active</span>' +
+    '</div>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">' +
+      '<span style="font-size:10px;color:var(--text3)">Owner: ' + escHtml(plan.owner_email || '—') + '</span>' +
+      checkText +
+    '</div>' +
+  '</div>';
+}
+
+function wireAcademicsSection(/* container */) {
+  // Reserved for future click handlers (drill into assessment, open plan, etc.)
 }
 
 export { openStudent, wireStudentLinks, stuNameLink, fetchStudentNote, saveStudentNote };

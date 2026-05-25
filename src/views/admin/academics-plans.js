@@ -21,7 +21,8 @@ import {
 } from '../../main.js';
 import {
   fetchActionPlans, updateActionPlan, deleteActionPlan,
-  fetchStudentsByCleverIds, recomputeAllOutcomes
+  fetchStudentsByCleverIds, recomputeAllOutcomes,
+  fetchPlanOutcomeBreakdown
 } from '../../api/academics.js';
 
 var SCHOOL_YEAR = import.meta.env.VITE_SCHOOL_YEAR || '2025-26';
@@ -31,6 +32,7 @@ var V = {
   tab: 'active',
   plans: [],
   studentMap: {},          // clever_id -> {first_name, last_name, homeroom, ...}
+  breakdowns: {},          // planId -> per-student outcome breakdown (auto-completed plans only)
   loading: false
 };
 
@@ -40,6 +42,7 @@ export function openAcademicsPlans() {
   V.tab = 'active';
   V.plans = [];
   V.studentMap = {};
+  V.breakdowns = {};
   V.loading = true;
   renderShell();
   loadData();
@@ -223,6 +226,18 @@ function renderOutcome(plan) {
     plan.outcome_notes.indexOf('Auto-completed') === 0;
   var sourceLabel = isAuto ? 'Auto-completed' : 'Outcome';
 
+  // Per-student delta breakdown — only rendered for auto-completed plans
+  // (we have a deterministic source vs follow-up pair to compare).
+  var breakdownHtml = '';
+  var breakdown = V.breakdowns[plan.id];
+  if (isAuto && breakdown && breakdown.length) {
+    breakdownHtml =
+      '<div style="margin-top:10px;padding-top:8px;border-top:0.5px solid var(--border)">' +
+        '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Per-scholar deltas</div>' +
+        breakdown.map(renderStudentDeltaBar).join('') +
+      '</div>';
+  }
+
   return '<div style="padding:8px 10px;background:var(--panel);border-radius:6px;margin-bottom:8px">' +
     '<div style="display:flex;justify-content:space-between;align-items:center">' +
       '<div style="font-size:10px;color:' + (isAuto ? 'var(--navy)' : 'var(--text3)') +
@@ -234,6 +249,44 @@ function renderOutcome(plan) {
     (plan.outcome_notes
       ? '<div style="font-size:11px;color:var(--text2);margin-top:4px">' + escHtml(plan.outcome_notes) + '</div>'
       : '') +
+    breakdownHtml +
+  '</div>';
+}
+
+// Single row: scholar name | bar | delta. Bars are normalized: a +30 pt gain
+// fills the green half; a -30 pt drop fills the red half. Anything beyond
+// 30 pts clips to the edge — these are pilot-data magnitudes; rescale later
+// if real datasets show consistently larger swings.
+function renderStudentDeltaBar(item) {
+  var maxAbsForVis = 30; // pts; visual range
+  var d = item.delta;
+  var hasDelta = d !== null && d !== undefined;
+  var pct = hasDelta ? Math.min(1, Math.abs(d) / maxAbsForVis) : 0;
+  var color = hasDelta ? (d > 0 ? '#4ABFA3' : d < 0 ? '#D63B3B' : '#98A2AD') : 'var(--border)';
+  var deltaText = hasDelta
+    ? (d > 0 ? '+' : '') + Math.round(d * 10) / 10
+    : '—';
+
+  // Two-tone bar with center pivot
+  var leftPct = (d < 0) ? (pct * 50) : 0;
+  var rightPct = (d > 0) ? (pct * 50) : 0;
+
+  return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:11px">' +
+    '<span style="flex:1;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+      escHtml(item.student_name) +
+    '</span>' +
+    '<div style="position:relative;width:100px;height:6px;background:var(--border);border-radius:3px;flex-shrink:0">' +
+      '<div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--text3);opacity:.5"></div>' +
+      (d > 0
+        ? '<div style="position:absolute;left:50%;top:0;bottom:0;width:' + rightPct.toFixed(1) + '%;background:' + color + ';border-radius:0 3px 3px 0"></div>'
+        : '') +
+      (d < 0
+        ? '<div style="position:absolute;right:50%;top:0;bottom:0;width:' + leftPct.toFixed(1) + '%;background:' + color + ';border-radius:3px 0 0 3px"></div>'
+        : '') +
+    '</div>' +
+    '<span style="width:40px;text-align:right;color:' +
+      (hasDelta && d > 0 ? '#287f6c' : hasDelta && d < 0 ? '#a82828' : 'var(--text3)') +
+      ';font-weight:700">' + deltaText + '</span>' +
   '</div>';
 }
 
@@ -505,13 +558,27 @@ function loadData() {
       (p.action_plan_students || []).forEach(function(rel) { allCleverIds[rel.clever_id] = true; });
     });
     var ids = Object.keys(allCleverIds);
-    if (!ids.length) {
-      V.loading = false;
-      renderShell();
-      return;
-    }
-    fetchStudentsByCleverIds(ids, function(err2, map) {
-      V.studentMap = map || {};
+
+    // Fetch per-student outcome breakdowns for all auto-completed plans
+    // (those with both source and follow_up event ids). Used by renderOutcome
+    // to draw the per-scholar delta bars. Fires in parallel with the
+    // student-name fetch; either failing degrades gracefully (bars just
+    // don't render, plan card still works).
+    var autoPlans = plans.filter(function(p) {
+      return p.source_assessment_event_id && p.follow_up_event_id;
+    });
+
+    var nameP = ids.length
+      ? fetchStudentsByCleverIds(ids).then(function(m) { V.studentMap = m || {}; })
+      : Promise.resolve();
+
+    var breakdownP = Promise.all(autoPlans.map(function(p) {
+      return fetchPlanOutcomeBreakdown(p)
+        .then(function(b) { if (b) V.breakdowns[p.id] = b; })
+        .catch(function() { /* swallow per-plan errors */ });
+    }));
+
+    Promise.all([nameP, breakdownP]).then(function() {
       V.loading = false;
       renderShell();
     });
