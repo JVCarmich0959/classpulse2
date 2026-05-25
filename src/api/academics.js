@@ -665,6 +665,136 @@ function tryCompletionForCandidates(plan, candidates) {
   return tryNext();
 }
 
+// ── STUDENT-CENTRIC FETCHES ─────────────────────────────────────────────────
+
+// All academic scores for a single student, joined with their assessment
+// events in one round-trip via PostgREST nested embedding.
+// Returns: [{score, proficiency, recorded_at, assessment_event:{...}}, ...]
+export function fetchStudentAcademics(cleverId, cb) {
+  if (!cleverId) {
+    if (cb) cb(null, []);
+    return Promise.resolve([]);
+  }
+  var params = [
+    'select=id,score,proficiency,recorded_at,notes,assessment_event:assessment_events(*)',
+    'clever_id=eq.' + encodeURIComponent(cleverId),
+    'order=recorded_at.desc',
+    'limit=100'
+  ];
+  return authedFetch(REST + '/academic_scores?' + params.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) {
+      var data = Array.isArray(rows) ? rows : [];
+      if (cb) cb(null, data);
+      return data;
+    })
+    .catch(function(err) { if (cb) cb(err, []); throw err; });
+}
+
+// Action plans that target this specific student.
+export function fetchActionPlansForStudent(cleverId, cb) {
+  if (!cleverId) {
+    if (cb) cb(null, []);
+    return Promise.resolve([]);
+  }
+  var params = [
+    'select=*,action_plan_students!inner(clever_id)',
+    'action_plan_students.clever_id=eq.' + encodeURIComponent(cleverId),
+    'order=created_at.desc',
+    'limit=50'
+  ];
+  return authedFetch(REST + '/action_plans?' + params.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) {
+      var data = Array.isArray(rows) ? rows : [];
+      if (cb) cb(null, data);
+      return data;
+    })
+    .catch(function(err) { if (cb) cb(err, []); throw err; });
+}
+
+// Per-student delta breakdown for a completed (auto-linked) action plan.
+// Used by the plan card to render mini-bars showing who improved how much.
+//
+// Returns: [{clever_id, student_name, source_pct, follow_up_pct, delta}, ...]
+// sorted by biggest gainers first. Null if plan has no follow_up_event_id.
+export function fetchPlanOutcomeBreakdown(plan, cb) {
+  if (!plan || !plan.follow_up_event_id || !plan.source_assessment_event_id) {
+    if (cb) cb(null, null);
+    return Promise.resolve(null);
+  }
+  return authedFetch(REST + '/action_plan_students?select=clever_id&action_plan_id=eq.' +
+    encodeURIComponent(plan.id))
+    .then(function(r) { return r.json(); })
+    .then(function(students) {
+      var targetIds = (Array.isArray(students) ? students : []).map(function(s) { return s.clever_id; });
+      if (!targetIds.length) {
+        if (cb) cb(null, []);
+        return [];
+      }
+      var inClause = 'in.(' + targetIds.map(function(id) {
+        return '"' + String(id).replace(/"/g, '\\"') + '"';
+      }).join(',') + ')';
+
+      return Promise.all([
+        authedFetch(REST + '/academic_scores?select=clever_id,score' +
+          '&assessment_event_id=eq.' + encodeURIComponent(plan.source_assessment_event_id) +
+          '&clever_id=' + inClause).then(function(r) { return r.json(); }),
+        authedFetch(REST + '/academic_scores?select=clever_id,score' +
+          '&assessment_event_id=eq.' + encodeURIComponent(plan.follow_up_event_id) +
+          '&clever_id=' + inClause).then(function(r) { return r.json(); }),
+        authedFetch(REST + '/assessment_events?select=id,max_score' +
+          '&id=in.(' + encodeURIComponent(plan.source_assessment_event_id) + ',' +
+                       encodeURIComponent(plan.follow_up_event_id) + ')')
+          .then(function(r) { return r.json(); }),
+        authedFetch(REST + '/students?select=clever_id,first_name,last_name,student_name' +
+          '&clever_id=' + inClause).then(function(r) { return r.json(); })
+      ]).then(function(results) {
+        var sourceScores = Array.isArray(results[0]) ? results[0] : [];
+        var followScores = Array.isArray(results[1]) ? results[1] : [];
+        var events       = Array.isArray(results[2]) ? results[2] : [];
+        var studentRecs  = Array.isArray(results[3]) ? results[3] : [];
+
+        var srcMap = {}; sourceScores.forEach(function(s) { srcMap[s.clever_id] = s.score; });
+        var fupMap = {}; followScores.forEach(function(s) { fupMap[s.clever_id] = s.score; });
+        var stuMap = {}; studentRecs.forEach(function(s) { stuMap[s.clever_id] = s; });
+        var evMap  = {}; events.forEach(function(e) { evMap[e.id] = Number(e.max_score) || 100; });
+
+        var sourceMax = evMap[plan.source_assessment_event_id] || 100;
+        var followMax = evMap[plan.follow_up_event_id] || 100;
+
+        var breakdown = targetIds.map(function(cid) {
+          var src = srcMap[cid];
+          var fup = fupMap[cid];
+          var srcPct = (src !== undefined && src !== null) ? (Number(src) / sourceMax) * 100 : null;
+          var fupPct = (fup !== undefined && fup !== null) ? (Number(fup) / followMax) * 100 : null;
+          var delta = (srcPct !== null && fupPct !== null) ? (fupPct - srcPct) : null;
+          var stu = stuMap[cid] || {};
+          var name = (stu.first_name && stu.last_name)
+            ? (stu.first_name + ' ' + stu.last_name)
+            : (stu.student_name || cid);
+          return {
+            clever_id: cid,
+            student_name: name,
+            source_pct: srcPct,
+            follow_up_pct: fupPct,
+            delta: delta
+          };
+        });
+        // Biggest gainers first
+        breakdown.sort(function(a, b) {
+          if (a.delta === null && b.delta === null) return 0;
+          if (a.delta === null) return 1;
+          if (b.delta === null) return -1;
+          return b.delta - a.delta;
+        });
+        if (cb) cb(null, breakdown);
+        return breakdown;
+      });
+    })
+    .catch(function(err) { if (cb) cb(err, null); throw err; });
+}
+
 // ── BULK FETCH SCORES FOR MANY EVENTS ───────────────────────────────────────
 // PostgREST `in.()` filter on assessment_event_id. Used by the binder.
 // Returns: { 'cleverId|eventId': score row, ... }
