@@ -3,6 +3,7 @@ import { supabase } from './api/client.js';
 import { checkInviteToken } from './auth/session.js';
 import { openStudent, wireStudentLinks, stuNameLink } from './views/admin/student.js';
 import { openAcademicsEntry } from './views/admin/academics-enter.js';
+import { openAcademicsBinder } from './views/admin/academics-binder.js';
 
 'use strict';
 
@@ -1204,6 +1205,7 @@ function updateNavActive(screenId){
     'S-detail':'AN-classes',
     'S-student':'AN-classes',
     'S-academics':'AN-dash',
+    'S-academics-binder':'AN-dash',
     'S-teacher':'TN-log',
     'S-quick-color':'TN-qc',
     'S-log':'TN-log'
@@ -2662,6 +2664,8 @@ function renderAdmin(){
   if(t==='academics'){
     var ent=document.getElementById('acad-launch-enter');
     if(ent) ent.addEventListener('click',function(){openAcademicsEntry();});
+    var bin=document.getElementById('acad-launch-binder');
+    if(bin) bin.addEventListener('click',function(){openAcademicsBinder();});
   }
   if(STATE.liveError) body.innerHTML='<div class="alert" style="margin:0">Error: Could not reach Supabase — showing cached data</div>'+body.innerHTML;
   if(t==='students') {
@@ -2838,20 +2842,30 @@ function toggleFA(id) {
 }
 
 
-// Academics tab — launcher for the score entry workflow.
-// Binder view, Tuesday meeting mode, and action plans land in subsequent
-// PRs; for now this is a single CTA into score entry.
+// Academics tab — launchers for the DDI workflow surfaces.
+// Tuesday meeting mode + action plans land in subsequent PRs.
 function bAC(){
-  return '<div class="card" style="padding:18px">' +
-    '<div style="font-size:14px;font-weight:600;margin-bottom:6px">Score Entry</div>' +
-    '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">' +
-      'Record exit ticket and quiz scores. Replaces the spreadsheet — keyboard-driven, auto-saves, supports bulk paste from Excel.' +
+  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+    '<div class="card" style="padding:18px">' +
+      '<div style="font-size:14px;font-weight:600;margin-bottom:6px">Score Entry</div>' +
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">' +
+        'Record exit ticket and quiz scores. Replaces the spreadsheet — keyboard-driven, auto-saves, supports bulk paste from Excel.' +
+      '</div>' +
+      '<button id="acad-launch-enter" class="btn-primary" style="padding:10px 16px;font-weight:600">' +
+        'Enter Scores →' +
+      '</button>' +
     '</div>' +
-    '<button id="acad-launch-enter" class="btn-primary" style="padding:10px 16px;font-weight:600">' +
-      'Enter Scores →' +
-    '</button>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">' +
-      '<strong>Coming soon:</strong> Data binder grid · Tuesday meeting mode · Action plans with auto-tracked outcomes.' +
+    '<div class="card" style="padding:18px">' +
+      '<div style="font-size:14px;font-weight:600;margin-bottom:6px">Data Binder</div>' +
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">' +
+        'The grid for your Tuesday meeting. Color-coded mastery, lowest performers at top, drill into any cell.' +
+      '</div>' +
+      '<button id="acad-launch-binder" class="btn-primary" style="padding:10px 16px;font-weight:600">' +
+        'Open Binder →' +
+      '</button>' +
+    '</div>' +
+    '<div class="card" style="padding:18px;grid-column:1 / span 2;font-size:11px;color:var(--text3)">' +
+      '<strong>Coming soon:</strong> Tuesday meeting mode · Action plans · Auto-tracked reteach outcomes.' +
     '</div>' +
   '</div>';
 }
@@ -4443,6 +4457,13 @@ el('btn-stu-back') && el('btn-stu-back').addEventListener('click',function(){
 });
 
 el('btn-acad-back') && el('btn-acad-back').addEventListener('click',function(){
+  STATE.adminTab='academics';
+  showScreen('S-admin',true);
+  document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='academics');});
+  renderAdmin();
+});
+
+el('btn-binder-back') && el('btn-binder-back').addEventListener('click',function(){
   STATE.adminTab='academics';
   showScreen('S-admin',true);
   document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='academics');});
