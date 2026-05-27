@@ -23,7 +23,7 @@ import {
   showScreen, showToast, emptyState,
   skeletonRows, escHtml, openStudent
 } from '../../main.js';
-import { fetchBinderData } from '../../api/academics.js';
+import { fetchBinderData, subscribeAcademicChanges } from '../../api/academics.js';
 
 var SCHOOL_YEAR = import.meta.env.VITE_SCHOOL_YEAR || '2025-26';
 var SUBJECTS = ['all', 'math', 'reading', 'writing', 'science', 'social_studies'];
@@ -47,7 +47,8 @@ var V = {
   dateRange: 'quarter',
   sortMode: 'lowest',
   data: null,               // { events, roster, scoresByCell }
-  loading: false
+  loading: false,
+  unsubscribe: null         // realtime channel cleanup fn; set in openAcademicsBinder
 };
 
 // ── PUBLIC ENTRY POINT ──────────────────────────────────────────────────────
@@ -55,6 +56,24 @@ export function openAcademicsBinder() {
   showScreen('S-academics-binder');
   renderShell();
   loadData();
+  // Real-time updates: another teacher entering scores or creating an
+  // assessment will push events here. We patch the grid in place rather
+  // than refetching, so the demo moment is instant.
+  closeRealtime();
+  V.unsubscribe = subscribeAcademicChanges('binder', {
+    onScoreChange: handleScoreChange,
+    onEventChange: handleEventChange
+  });
+}
+
+// Allows main.js to clean up the channel when the user navigates away.
+export function closeAcademicsBinder() { closeRealtime(); }
+
+function closeRealtime() {
+  if (V.unsubscribe) {
+    try { V.unsubscribe(); } catch (e) {}
+    V.unsubscribe = null;
+  }
 }
 
 // ── RENDER ──────────────────────────────────────────────────────────────────
@@ -305,6 +324,14 @@ function renderBinderStyles() {
     '.binder-stat-avg { font-size:14px; font-weight:700; }' +
     '.binder-stat-trend { font-size:14px; font-weight:700; margin-top:-2px; }' +
     '.binder-stat-empty { color:var(--text3); }' +
+    // Realtime pulse: a cell that just received a remote update flashes to
+    // call attention to itself. ~1.2s ease-out fade.
+    '@keyframes binder-cell-pulse-kf {' +
+      '0% { box-shadow: 0 0 0 0 rgba(39,26,112,.6); background-color: rgba(39,26,112,.18); }' +
+      '60% { box-shadow: 0 0 0 6px rgba(39,26,112,0); }' +
+      '100% { box-shadow: 0 0 0 0 rgba(39,26,112,0); }' +
+    '}' +
+    '.binder-cell-pulse { animation: binder-cell-pulse-kf 1.2s ease-out; }' +
     '@media print {' +
       '.topbar, #binder-filters, .binder-chip { display:none !important; }' +
       '.binder-scroll-wrap { overflow:visible !important; }' +
@@ -506,6 +533,112 @@ function closeCellDrillOnOutsideClick(e) {
 function closeCellDrill() {
   var pop = document.getElementById('binder-drill-pop');
   if (pop) pop.remove();
+}
+
+// ── REALTIME HANDLERS ───────────────────────────────────────────────────────
+// We update V.data incrementally and patch only the affected DOM cell,
+// instead of redrawing the whole grid. That's what makes the demo moment
+// feel magical — when another teacher saves a score, you see THAT cell
+// fill in, not a flicker of the entire table.
+
+function handleScoreChange(payload) {
+  if (!V.data) return;
+  var row = payload.new || payload.old;
+  if (!row) return;
+  var event = V.data.events.find(function(e) { return e.id === row.assessment_event_id; });
+  if (!event) return; // event isn't currently in the binder filter — ignore
+
+  var cleverId = row.clever_id;
+  var key = cleverId + '|' + event.id;
+
+  if (payload.eventType === 'DELETE') {
+    delete V.data.scoresByCell[key];
+  } else {
+    // INSERT or UPDATE — store the new row
+    V.data.scoresByCell[key] = row;
+  }
+  patchCell(cleverId, event);
+}
+
+function handleEventChange(payload) {
+  if (!V.data) return;
+  // For event INSERTs and DELETEs we redraw the grid (column count changes).
+  // For UPDATEs (e.g. title or thresholds), patch all cells in the column.
+  if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
+    // Only redraw if the new/deleted event matches the current filter
+    var ev = payload.new || payload.old;
+    if (!ev) return;
+    if (V.gradeLevel && ev.grade_level !== V.gradeLevel) return;
+    if (V.subject && V.subject !== 'all' && ev.subject !== V.subject) return;
+    loadData(); // simplest: trigger a refresh — column count change is rare
+    return;
+  }
+  // UPDATE: replace event metadata in place and redraw the column
+  var updated = payload.new;
+  if (!updated) return;
+  var idx = V.data.events.findIndex(function(e) { return e.id === updated.id; });
+  if (idx < 0) return;
+  V.data.events[idx] = updated;
+  // Cheapest correct render: full grid redraw. Column header may have changed.
+  var wrap = el('binder-grid-wrap');
+  if (wrap) {
+    wrap.innerHTML = renderGrid();
+    wireGrid();
+  }
+}
+
+// In-place DOM patch for one cell, with a brief flash to telegraph the update.
+function patchCell(cleverId, event) {
+  var rows = document.querySelectorAll('#binder-grid-wrap tbody tr');
+  // We need to find the right row + column; class structure has student name
+  // in first column, then one cell per event in the order of V.data.events.
+  // Each cell carries data-cleverid + data-eventid attributes (set in renderCell).
+  var selector = '.binder-cell[data-cleverid="' + cssEscape(cleverId) + '"][data-eventid="' + cssEscape(event.id) + '"]';
+  var existing = document.querySelector(selector);
+  if (!existing) return;
+
+  // Build the new cell HTML
+  var score = V.data.scoresByCell[cleverId + '|' + event.id];
+  var student = V.data.roster.find(function(s) { return s.clever_id === cleverId; });
+  if (!student) return;
+  var newHtml = renderCell(score, event, student);
+
+  // Replace the cell node
+  var temp = document.createElement('tr');
+  temp.innerHTML = '<tr>' + newHtml + '</tr>';
+  // The temp.innerHTML wraps in tbody by browser — extract the td
+  var newCell = temp.querySelector('td');
+  if (!newCell) return;
+  // Insert pulse class for visual feedback
+  newCell.classList.add('binder-cell-pulse');
+  existing.parentNode.replaceChild(newCell, existing);
+  // Re-wire click handler for this cell
+  if (newCell.classList.contains('binder-cell-scored') ||
+      newCell.classList.contains('binder-cell-absent')) {
+    newCell.addEventListener('click', function(e) {
+      e.stopPropagation();
+      showCellDrill(newCell);
+    });
+  }
+  // Remove pulse after the animation; CSS animation handles the visual.
+  setTimeout(function() { newCell.classList.remove('binder-cell-pulse'); }, 1200);
+
+  // Update student avg + trend on the right column. Recompute and patch the
+  // stats cell for this row.
+  patchStudentStatsRow(student);
+}
+
+function patchStudentStatsRow(student) {
+  // Find the row and replace the last td (the "Avg" cell)
+  var nameCell = document.querySelector('.binder-name-cell .stu-name-link[data-stu="' +
+    cssEscape(student.student_name || (student.first_name + ' ' + student.last_name)) + '"]');
+  if (!nameCell) return;
+  var tr = nameCell.closest('tr');
+  if (!tr) return;
+  var stats = computeStudentStats(student, V.data.events, V.data.scoresByCell);
+  var withStats = Object.assign({}, student, stats);
+  var lastTd = tr.querySelector('td.binder-stats-cell');
+  if (lastTd) lastTd.innerHTML = renderStudentStats(withStats);
 }
 
 // ── DATA LOAD ───────────────────────────────────────────────────────────────

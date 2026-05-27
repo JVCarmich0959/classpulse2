@@ -22,7 +22,7 @@ import {
 import {
   fetchActionPlans, updateActionPlan, deleteActionPlan,
   fetchStudentsByCleverIds, recomputeAllOutcomes,
-  fetchPlanOutcomeBreakdown
+  fetchPlanOutcomeBreakdown, subscribeAcademicChanges
 } from '../../api/academics.js';
 
 var SCHOOL_YEAR = import.meta.env.VITE_SCHOOL_YEAR || '2025-26';
@@ -33,7 +33,8 @@ var V = {
   plans: [],
   studentMap: {},          // clever_id -> {first_name, last_name, homeroom, ...}
   breakdowns: {},          // planId -> per-student outcome breakdown (auto-completed plans only)
-  loading: false
+  loading: false,
+  unsubscribe: null        // realtime cleanup
 };
 
 // ── PUBLIC ENTRY POINT ──────────────────────────────────────────────────────
@@ -46,6 +47,42 @@ export function openAcademicsPlans() {
   V.loading = true;
   renderShell();
   loadData();
+  // Real-time: when a plan auto-completes (or status changes anywhere), the
+  // matching card refreshes without a manual reload. The killer moment for
+  // the IC watching this screen while teachers enter follow-up scores.
+  closeRealtime();
+  V.unsubscribe = subscribeAcademicChanges('plans', {
+    onPlanChange: handlePlanChange
+  });
+}
+
+export function closeAcademicsPlans() { closeRealtime(); }
+
+function closeRealtime() {
+  if (V.unsubscribe) {
+    try { V.unsubscribe(); } catch (e) {}
+    V.unsubscribe = null;
+  }
+}
+
+// On any plan change, refetch that plan's row (cheapest correct path) and
+// re-render the list. For closed-loop completions specifically, also refetch
+// the per-scholar breakdown for the delta bars.
+function handlePlanChange(payload) {
+  var row = payload.new || payload.old;
+  if (!row) return;
+  // Simplest correct: reload the full plans list. Cheap at pilot scale,
+  // guarantees correct sort/tab counts. If pilot grows past ~200 plans,
+  // switch to surgical patching.
+  loadData();
+  // Toast for the demo wow-moment when something auto-completes
+  if (payload.eventType === 'UPDATE' && row.status === 'complete' &&
+      row.outcome_notes && row.outcome_notes.indexOf('Auto-completed') === 0) {
+    showToast('✓ Live: "' + row.topic + '" auto-completed (' +
+      (row.outcome_avg_delta >= 0 ? '+' : '') +
+      Math.round((row.outcome_avg_delta || 0) * 10) / 10 + ' pts)',
+      'info', 4500);
+  }
 }
 
 // ── RENDER ──────────────────────────────────────────────────────────────────
