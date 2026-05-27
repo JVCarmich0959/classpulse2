@@ -3,10 +3,10 @@ import { supabase } from './api/client.js';
 import { checkInviteToken } from './auth/session.js';
 import { openStudent, wireStudentLinks, stuNameLink } from './views/admin/student.js';
 import { openAcademicsEntry } from './views/admin/academics-enter.js';
-import { openAcademicsBinder } from './views/admin/academics-binder.js';
+import { openAcademicsBinder, closeAcademicsBinder } from './views/admin/academics-binder.js';
 import { openAcademicsMeeting } from './views/admin/academics-meeting.js';
-import { openAcademicsPlans } from './views/admin/academics-plans.js';
-import { openAcademicsCoach } from './views/admin/academics-coach.js';
+import { openAcademicsPlans, closeAcademicsPlans } from './views/admin/academics-plans.js';
+import { openAcademicsCoach, closeAcademicsCoach } from './views/admin/academics-coach.js';
 
 'use strict';
 
@@ -4485,10 +4485,10 @@ function backToAcademicsTab(){
   renderAdmin();
 }
 
-el('btn-binder-back') && el('btn-binder-back').addEventListener('click',backToAcademicsTab);
+el('btn-binder-back') && el('btn-binder-back').addEventListener('click',function(){closeAcademicsBinder();backToAcademicsTab();});
 el('btn-meeting-back') && el('btn-meeting-back').addEventListener('click',backToAcademicsTab);
-el('btn-plans-back') && el('btn-plans-back').addEventListener('click',backToAcademicsTab);
-el('btn-coach-back') && el('btn-coach-back').addEventListener('click',backToAcademicsTab);
+el('btn-plans-back') && el('btn-plans-back').addEventListener('click',function(){closeAcademicsPlans();backToAcademicsTab();});
+el('btn-coach-back') && el('btn-coach-back').addEventListener('click',function(){closeAcademicsCoach();backToAcademicsTab();});
 
 el('btn-det-log') && el('btn-det-log').addEventListener('click',function(){
   var hr=el('det-title').textContent;
