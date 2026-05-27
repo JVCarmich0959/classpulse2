@@ -30,7 +30,7 @@ import {
   showScreen, showToast, emptyState,
   skeletonRows, escHtml, drawLine
 } from '../../main.js';
-import { fetchCoachDashboardData } from '../../api/academics.js';
+import { fetchCoachDashboardData, subscribeAcademicChanges } from '../../api/academics.js';
 
 var SCHOOL_YEAR = import.meta.env.VITE_SCHOOL_YEAR || '2025-26';
 
@@ -38,7 +38,9 @@ var SCHOOL_YEAR = import.meta.env.VITE_SCHOOL_YEAR || '2025-26';
 var V = {
   data: null,
   loading: false,
-  rangeKey: 'quarter'
+  rangeKey: 'quarter',
+  unsubscribe: null,
+  refreshTimer: null
 };
 
 var DATE_RANGES = [
@@ -55,6 +57,41 @@ export function openAcademicsCoach() {
   V.rangeKey = 'quarter';
   renderShell();
   loadData();
+  // Real-time: any academic change anywhere in the school triggers a
+  // debounced refresh. We use a coarse pattern here (vs binder's
+  // surgical patching) because the coach view's value is the AGGREGATE
+  // story — flickering individual cells would feel busy. The debounce
+  // also coalesces bursts of score entries into a single refresh.
+  closeRealtime();
+  V.unsubscribe = subscribeAcademicChanges('coach', {
+    onScoreChange: scheduleRefresh,
+    onPlanChange:  scheduleRefresh,
+    onEventChange: scheduleRefresh
+  });
+}
+
+export function closeAcademicsCoach() { closeRealtime(); }
+
+function closeRealtime() {
+  if (V.unsubscribe) {
+    try { V.unsubscribe(); } catch (e) {}
+    V.unsubscribe = null;
+  }
+  if (V.refreshTimer) {
+    clearTimeout(V.refreshTimer);
+    V.refreshTimer = null;
+  }
+}
+
+function scheduleRefresh() {
+  if (V.refreshTimer) clearTimeout(V.refreshTimer);
+  // 2-second coalescing window — fast enough to feel live, slow enough
+  // to absorb a rapid burst of score entries during data-meeting prep
+  V.refreshTimer = setTimeout(function() {
+    V.refreshTimer = null;
+    if (!V.data) return; // initial load is in flight; let it finish
+    loadData();
+  }, 2000);
 }
 
 // ── RENDER ──────────────────────────────────────────────────────────────────

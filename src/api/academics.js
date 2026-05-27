@@ -8,6 +8,7 @@
 
 import { SB_URL, SB_KEY } from '../config.js';
 import { SESSION, authedFetch } from '../main.js';
+import { supabase } from './client.js';
 
 var REST = '/rest/v1';
 
@@ -868,4 +869,122 @@ export function fetchBinderData(opts, cb) {
       if (cb) cb(err, out);
       return out;
     });
+}
+
+// ── SCHOOL-WIDE FETCHES (COACH DASHBOARD) ───────────────────────────────────
+// All assessment events + their scores + plans within a date range, used by
+// the coach dashboard to compute cross-grade/cross-teacher rollups in the
+// browser. At pilot scale this is a single round trip per table; rollup
+// logic stays client-side for fast iteration.
+//
+// NOTE: This helper went missing from main when PR #53 was merged via the
+// stacked-PR cleanup (PR #51) — the merge resolution dropped the
+// academics.js diff while keeping academics-coach.js. The coach view was
+// effectively broken on main until this PR. Reintroduced here so the realtime
+// wiring (which imports it) actually compiles.
+//
+// opts: { schoolYear?, dateFrom?, dateTo? }
+// Returns: { events: [...], scores: [...], plans: [...] }
+export function fetchCoachDashboardData(opts, cb) {
+  opts = opts || {};
+  var schoolYear = opts.schoolYear || '2025-26';
+
+  var evParams = ['select=*', 'school_year=eq.' + encodeURIComponent(schoolYear),
+                  'order=administered_date.desc', 'limit=500'];
+  if (opts.dateFrom) evParams.push('administered_date=gte.' + encodeURIComponent(opts.dateFrom));
+  if (opts.dateTo)   evParams.push('administered_date=lte.' + encodeURIComponent(opts.dateTo));
+
+  var planParams = ['select=*,action_plan_students(clever_id)',
+                    'school_year=eq.' + encodeURIComponent(schoolYear),
+                    'order=created_at.desc', 'limit=500'];
+
+  var eventsP = authedFetch(REST + '/assessment_events?' + evParams.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) { return Array.isArray(rows) ? rows : []; });
+
+  var plansP = authedFetch(REST + '/action_plans?' + planParams.join('&'))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) { return Array.isArray(rows) ? rows : []; });
+
+  return eventsP.then(function(events) {
+    var eventIds = events.map(function(e) { return e.id; });
+    var scoresP = eventIds.length
+      ? authedFetch(REST + '/academic_scores?select=*&assessment_event_id=in.(' +
+          eventIds.map(function(id) { return encodeURIComponent(id); }).join(',') + ')')
+        .then(function(r) { return r.json(); })
+        .then(function(rows) { return Array.isArray(rows) ? rows : []; })
+      : Promise.resolve([]);
+    return Promise.all([scoresP, plansP]).then(function(results) {
+      var out = { events: events, scores: results[0], plans: results[1] };
+      if (cb) cb(null, out);
+      return out;
+    });
+  }).catch(function(err) {
+    var out = { events: [], scores: [], plans: [], error: err };
+    if (cb) cb(err, out);
+    return out;
+  });
+}
+
+// ── REALTIME SUBSCRIPTIONS ──────────────────────────────────────────────────
+// Mirrors the realtime channel pattern used by color_transitions on the
+// behavior side. A view (binder, plans, coach) calls subscribeAcademicChanges
+// on mount with the callbacks it cares about, and calls the returned
+// unsubscribe function on unmount / screen change.
+//
+// The custom realtime client (src/api/client.js) uses Phoenix-style channels
+// over Supabase realtime. broadcast.self=false means a client does NOT
+// receive its own writes — this is fine because views that initiate writes
+// update their own state optimistically.
+//
+// usage:
+//   var off = subscribeAcademicChanges('binder', {
+//     onScoreChange: function(payload) { ... },
+//     onEventChange: function(payload) { ... },
+//     onPlanChange: function(payload) { ... }
+//   });
+//   ...later...
+//   off();
+export function subscribeAcademicChanges(channelName, callbacks) {
+  if (typeof supabase.setAuthToken === 'function') {
+    supabase.setAuthToken((SESSION && SESSION.token) || null);
+  }
+  callbacks = callbacks || {};
+  var ch = supabase.channel('academic-' + channelName + '-' + Date.now());
+
+  // We bind separately per (table, event) because the custom client filters
+  // strictly on filter.event when present; a single 'event:*' wouldn't match.
+  ['INSERT', 'UPDATE', 'DELETE'].forEach(function(ev) {
+    if (callbacks.onScoreChange) {
+      ch.on('postgres_changes',
+        { event: ev, schema: 'public', table: 'academic_scores' },
+        function(payload) {
+          try { callbacks.onScoreChange(payload); } catch (e) { /* swallow render errors */ }
+        });
+    }
+    if (callbacks.onEventChange) {
+      ch.on('postgres_changes',
+        { event: ev, schema: 'public', table: 'assessment_events' },
+        function(payload) {
+          try { callbacks.onEventChange(payload); } catch (e) {}
+        });
+    }
+    if (callbacks.onPlanChange) {
+      ch.on('postgres_changes',
+        { event: ev, schema: 'public', table: 'action_plans' },
+        function(payload) {
+          try { callbacks.onPlanChange(payload); } catch (e) {}
+        });
+    }
+  });
+
+  ch.subscribe();
+
+  // Returns the unsubscribe function. Idempotent — safe to call multiple times.
+  var unsubscribed = false;
+  return function unsubscribe() {
+    if (unsubscribed) return;
+    unsubscribed = true;
+    try { supabase.removeChannel(ch); } catch (e) { /* swallow */ }
+  };
 }
