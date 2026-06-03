@@ -744,7 +744,7 @@ function initSWHover() {
       tip.style.display='block';
       tip.style.left=(e.clientX-rect.left)+'px';
       tip.style.top=(e.clientY-rect.top)+'px';
-      tip.textContent=d.first+' \u00B7 '+d.grade+(d.grade==='K'?'':d.grade==='1'?'st':d.grade==='2'?'nd':d.grade==='3'?'rd':'th')+' grade';
+      tip.textContent=d.first+' \u00B7 '+d.grade+(d.grade==='K'?'':d.grade==='1'?'st':d.grade==='2'?'nd':d.grade==='3'?'rd':'th')+' grade \u00B7 '+d.color;
       wrap.style.cursor='pointer';
     } else {
       tip.style.display='none';
@@ -760,7 +760,7 @@ function initSWHover() {
       tip.style.display='block';
       tip.style.left=(touch.clientX-rect.left)+'px';
       tip.style.top=(touch.clientY-rect.top)+'px';
-      tip.textContent=d.first+' \u00B7 '+d.grade+' grade';
+      tip.textContent=d.first+' \u00B7 '+d.grade+' grade \u00B7 '+d.color;
       setTimeout(function(){tip.style.display='none';},2200);
     }
   },{passive:true});
@@ -917,7 +917,8 @@ function kpiH(lb,v,sub,flag){return '<div class="kpi'+(flag?' flag':'')+'"><div 
 function updateFreshnessPill(){
   var pill=document.querySelector('.fresh-pill');
   if(pill&&STATE.liveRows&&Array.isArray(STATE.liveRows)){
-    pill.textContent=STATE.liveRows.length+' rows';
+    pill.textContent=STATE.liveRows.length+' records';
+    pill.title='Behavior records currently loaded from the live database';
   }
 }
 function initFreshness(){
@@ -1696,7 +1697,7 @@ function loadQCRoster(){
   var body = el('qc-roster-body');
   if(!body) return;
   if(!QC_STATE.specials){
-    body.innerHTML = emptyState('Select a class', 'Choose the class you are currently teaching.');
+    body.innerHTML = emptyState('Pick your class', 'Choose the class you are teaching above. Its roster loads here, then tap any scholar to set their color.');
     return;
   }
   body.innerHTML = skeletonRows(8);
@@ -1736,7 +1737,7 @@ function loadQCRoster(){
 function renderQCRoster(){
   var body = el('qc-roster-body');
   if(!body || !QC_STATE.roster.length){
-    if(body) body.innerHTML = emptyState('No students found', 'Select a class above to load the roster.');
+    if(body) body.innerHTML = emptyState('No students found', 'Pick a class above to load its roster, then tap any scholar to set their color.');
     return;
   }
 
@@ -2761,7 +2762,7 @@ function bFA() {
   }
 
   var all = STATE.firstAidRows || [];
-  if (!all.length) return '<div class="card">' + emptyState('No first aid records', 'First aid events will appear here when logged.') + '</div>';
+  if (!all.length) return '<div class="card">' + emptyState('No injury records', 'First aid and injury events will appear here once they are logged.') + '</div>';
 
   // Read active filters from DOM (default: all)
   var activeSpecials = STATE.faFilterSpecials || 'all';
@@ -2872,7 +2873,7 @@ function bAC(){
       'Students × assessments grid with color-coded mastery. Sort by lowest performers for the meeting.',
       'Open Binder') +
     card('acad-launch-meeting','Tuesday Meeting',
-      'Run your weekly DDI meeting. Bottom 5 auto-flagged, create action plans live, capture meeting notes.',
+      'Run your weekly data meeting. The 5 lowest-scoring scholars are highlighted for you — create reteach plans live and capture notes.',
       'Start Meeting') +
     card('acad-launch-plans','Action Plans',
       'Reteach plans from your meetings. Track who\'s doing what, when to re-check, and how it landed.',
@@ -2980,22 +2981,26 @@ function bOV(live){
     '<div style="margin-top:6px;height:3px;border-radius:3px;background:var(--border);overflow:hidden">' +
       '<div id="sw-temp-fill" style="height:100%;border-radius:3px;transition:width .5s ease,background .5s ease;width:0%"></div>' +
     '</div>' +
-    '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);padding:2px 0 8px">' +
+    '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);padding:2px 0 6px">' +
       '<span>Cool</span><span id="sw-temp-lbl">Calm</span><span>Hot</span>' +
+    '</div>' +
+    '<div style="font-size:10px;color:var(--text2);line-height:1.5;padding:0 2px 8px">' +
+      'Each dot is a scholar; its color is today’s behavior status. Calm scholars drift slowly, ' +
+      'escalated ones move fast. <strong style="color:var(--indigo);font-weight:600">Tap or hover a dot</strong> to see who it is.' +
     '</div>' +
     '<div style="display:flex;gap:6px;margin-bottom:8px">' +
       '<div style="flex:1;background:var(--panel);border-radius:8px;padding:5px 8px;text-align:center;border:0.5px solid var(--border)">' +
         '<div style="font-size:15px;font-weight:600;color:#4ABFA3" id="sw-sg">0</div>' +
-        '<div style="font-size:9px;color:var(--text3)">Green</div></div>' +
+        '<div style="font-size:9px;color:var(--text2)"><span style="color:#4ABFA3">●</span> Green</div></div>' +
       '<div style="flex:1;background:var(--panel);border-radius:8px;padding:5px 8px;text-align:center;border:0.5px solid var(--border)">' +
         '<div style="font-size:15px;font-weight:600;color:#E8C547" id="sw-sy">0</div>' +
-        '<div style="font-size:9px;color:var(--text3)">Yellow</div></div>' +
+        '<div style="font-size:9px;color:var(--text2)"><span style="color:#E8C547">◆</span> Yellow</div></div>' +
       '<div style="flex:1;background:var(--panel);border-radius:8px;padding:5px 8px;text-align:center;border:0.5px solid var(--border)">' +
         '<div style="font-size:15px;font-weight:600;color:#E87D2B" id="sw-so">0</div>' +
-        '<div style="font-size:9px;color:var(--text3)">Orange</div></div>' +
+        '<div style="font-size:9px;color:var(--text2)"><span style="color:#E87D2B">▲</span> Orange</div></div>' +
       '<div style="flex:1;background:var(--panel);border-radius:8px;padding:5px 8px;text-align:center;border:0.5px solid var(--border)">' +
         '<div style="font-size:15px;font-weight:600;color:#D63B3B" id="sw-sr">0</div>' +
-        '<div style="font-size:9px;color:var(--text3)">Red</div></div>' +
+        '<div style="font-size:9px;color:var(--text2)"><span style="color:#D63B3B">■</span> Red</div></div>' +
     '</div>' +
     '<div style="height:26px;border-radius:7px;border:0.5px solid var(--border);background:var(--panel);' +
       'display:flex;align-items:center;padding:0 10px;gap:8px;overflow:hidden">' +
