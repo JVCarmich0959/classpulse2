@@ -37,7 +37,7 @@ option{background:#eef1f8}
 .brow .btn-p{flex:2}
 .brow .btn-ok{flex:2}
 .sdots{display:flex;gap:5px;margin-top:10px}
-.dot{width:6px;height:6px;border-radius:50%;background:#eef1f8;transition:all .2s}
+.dot{width:6px;height:6px;border-radius:50%;background:#b4bccc;transition:all .2s}
 .dot.active{background:var(--navy);width:18px;border-radius:3px}
 .dot.done{background:var(--green)}
 .overlay{position:absolute;inset:0;background:rgba(0,0,0,.55);z-index:99;opacity:0;pointer-events:none;transition:opacity .3s}
@@ -145,7 +145,7 @@ option{background:#eef1f8}
 .ni.on,.ni.on span{color:var(--navy)}
 .install-app-btn{position:fixed;right:14px;bottom:calc(var(--sb) + 14px);z-index:120;border:1px solid var(--navy);background:var(--panel);color:var(--navy);border-radius:20px;padding:10px 14px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;cursor:pointer;box-shadow:var(--shadow)}
 .tag.blue,.tag.green,.tag.amber,.tag.red,.tag.gray{background:#eef1f8;color:var(--navy);border-color:#c8d0e0}
-.fresh-text{font-size:10px;color:var(--navy);font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;flex:1}
+.fresh-text{font-size:10px;font-weight:600;color:#4a3c0e;font-family:Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;flex:1}
 .log-item,.det-summary,.sess-strip,.interp-note,.sbar{background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow)}
 .log-detail-inner{padding:10px 0 4px;border-top:1px solid var(--border);margin-top:8px}
 .log-act-btn.edit{color:var(--navy);border-color:#c8d0e0}
@@ -296,6 +296,8 @@ textarea:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(39,26,112,0.
 [data-theme="dark"] .topbar{background:#1a1530;border-bottom:2px solid #BFA95F;box-shadow:0 2px 8px rgba(0,0,0,0.3)}
 [data-theme="dark"] .topbar h1{color:#e8e6f5}
 [data-theme="dark"] .fresh-strip{background:#1a1508;border-bottom:1px solid #2a2010;color:#BFA95F}
+[data-theme="dark"] .fresh-text{color:#d8c98a}
+[data-theme="dark"] .dot{background:#2e2a50}
 [data-theme="dark"] .fresh-pill{background:#271A70;color:#c8c4e8}
 [data-theme="dark"] .bnav{background:#130f24;border-top:2px solid #BFA95F;box-shadow:0 -2px 16px rgba(0,0,0,0.4)}
 [data-theme="dark"] .ni.on{color:#8A7BE0}

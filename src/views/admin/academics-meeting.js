@@ -101,7 +101,7 @@ function renderSetup() {
     '<div style="font-size:18px;font-weight:700;margin-bottom:6px">Start Tuesday Meeting</div>' +
     '<div style="font-size:12px;color:var(--text2);margin-bottom:18px">' +
       'Set up the meeting context. Once started, you\'ll see the recent assessment data, ' +
-      'identify the bottom 5, and capture action plans live.' +
+      'identify the 5 lowest-scoring scholars, and capture action plans live.' +
     '</div>' +
     formGrid([
       ['Grade',
@@ -315,7 +315,7 @@ function renderMeetingStyles() {
 
 function renderBottomFive(bottomN, mostRecentEvent) {
   if (!bottomN.length) {
-    return sidebarCard('Bottom 5',
+    return sidebarCard('Lowest 5 scorers',
       '<div style="font-size:11px;color:var(--text3);padding:6px 0">No scored students yet.</div>'
     );
   }
