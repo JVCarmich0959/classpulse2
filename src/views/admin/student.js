@@ -4,11 +4,6 @@ import { fetchStudentAcademics, fetchActionPlansForStudent } from '../../api/aca
 
 // -- HELPERS ------------------------------------------------------------------
 
-function colorFill(color) {
-  var fills = { Green:'#4ABFA3', Yellow:'#E8C547', Orange:'#E87D2B', Red:'#D63B3B' };
-  return fills[color] || '#98A2AD';
-}
-
 function stuInitials(name) {
   if (!name) return '?';
   var parts = name.trim().split(' ').filter(Boolean);
@@ -106,7 +101,7 @@ function buildBlockHeatmap(rows) {
     counts[r.specials] = (counts[r.specials] || 0) + 1;
   });
   var blocks = Object.keys(counts).sort(function(a, b) { return counts[b] - counts[a]; });
-  if (!blocks.length) return '<div style="font-size:12px;color:var(--text3);padding:8px 0">No block data yet</div>';
+  if (!blocks.length) return '<div style="font-size:12px;color:var(--text3);padding:8px 0">No subject data yet</div>';
   var max = counts[blocks[0]] || 1;
   return blocks.map(function(b, i) {
     var pct  = Math.round((counts[b] / max) * 100);
@@ -123,35 +118,6 @@ function buildBlockHeatmap(rows) {
   }).join('');
 }
 
-// -- TRANSITION ROW -----------------------------------------------------------
-
-function buildTransitionRow(r) {
-  var fromC = colorFill(r.from_color);
-  var toC   = colorFill(r.to_color);
-  var time  = r.created_at
-    ? new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-    : r.date || '';
-  return '<div style="padding:10px 0;border-bottom:0.5px solid var(--border);display:flex;gap:10px;align-items:flex-start">' +
-    '<div style="display:flex;align-items:center;gap:5px;flex-shrink:0;padding-top:2px">' +
-      '<div style="width:10px;height:10px;border-radius:50%;background:' + fromC + '"></div>' +
-      '<span style="font-size:11px;color:var(--text3)">\u2192</span>' +
-      '<div style="width:10px;height:10px;border-radius:50%;background:' + toC + '"></div>' +
-    '</div>' +
-    '<div style="flex:1;min-width:0">' +
-      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">' +
-        '<span style="font-size:12px;font-weight:700;color:' + toC + '">' + escHtml(r.from_color) + ' \u2192 ' + escHtml(r.to_color) + '</span>' +
-        '<span style="font-size:10px;color:var(--text3);flex-shrink:0">' + escHtml(time) + '</span>' +
-      '</div>' +
-      '<div style="font-size:11px;color:var(--text3);margin-top:1px">' + escHtml(r.specials || '') + '</div>' +
-      (r.duration_mins !== null && r.duration_mins !== undefined
-        ? '<div style="font-size:11px;color:var(--text2);margin-top:2px">' + r.duration_mins + ' min</div>' : '') +
-      (r.notes ? '<div style="font-size:11px;color:var(--text2);margin-top:2px;white-space:pre-wrap">' + escHtml(r.notes) + '</div>' : '') +
-      (r.needs_documentation
-        ? '<div style="font-size:10px;color:#E87D2B;font-weight:700;margin-top:3px">\u26a0\ufe0f Needs documentation</div>' : '') +
-    '</div>' +
-  '</div>';
-}
-
 // -- RENDER UNIFIED TIMELINE --------------------------------------------------
 
 function renderUnifiedTimeline(rows, container, onAfterEdit) {
@@ -159,25 +125,11 @@ function renderUnifiedTimeline(rows, container, onAfterEdit) {
     container.innerHTML = emptyState('No behavioral events on record', 'Incidents and Quick Color events will appear here when logged.');
     return;
   }
-  var incidents   = rows.filter(function(r) { return r._type !== 'transition'; });
-  var transitions = rows.filter(function(r) { return r._type === 'transition'; });
-
-  renderIncidentList(incidents.length ? incidents : [], container, onAfterEdit);
-
-  if (transitions.length) {
-    var tWrap = document.createElement('div');
-    tWrap.style.cssText = 'margin-top:10px';
-    var tHdr = document.createElement('div');
-    tHdr.className = 'sec';
-    tHdr.textContent = 'Quick Color events';
-    tWrap.appendChild(tHdr);
-    var tList = document.createElement('div');
-    tList.className = 'card';
-    tList.style.padding = '4px 12px';
-    tList.innerHTML = transitions.map(buildTransitionRow).join('');
-    tWrap.appendChild(tList);
-    container.appendChild(tWrap);
-  }
+  // Single chronological timeline: full incidents and Quick Color transitions are
+  // interleaved by date. renderIncidentList already renders both row types
+  // (it branches on r._type === 'transition'), so a scholar's full behavioral
+  // history reads as one story instead of two disconnected lists.
+  renderIncidentList(rows, container, onAfterEdit);
 }
 
 // -- MAIN OPEN FUNCTION -------------------------------------------------------
@@ -345,13 +297,13 @@ function renderProfile(name, stu, incidents, faRows, accRows, body) {
       '<div class="kpi"><div class="lbl">Chart used</div><div class="val">' + chartPct + '%</div></div>' +
       '<div class="kpi"><div class="lbl">Home contact</div><div class="val">' + homePct + '%</div></div>' +
       '<div class="kpi"><div class="lbl">Top behavior</div><div class="val" style="font-size:12px;line-height:1.2;margin-top:6px">' + escHtml(topBehavior) + '</div></div>' +
-      '<div class="kpi"><div class="lbl">Hardest block</div><div class="val" style="font-size:12px;line-height:1.2;margin-top:6px">' + escHtml(topBlock) + '</div></div>' +
+      '<div class="kpi"><div class="lbl">Toughest subject</div><div class="val" style="font-size:12px;line-height:1.2;margin-top:6px">' + escHtml(topBlock) + '</div></div>' +
     '</div>';
 
   // Block heatmap
   var heatHtml =
     '<div class="card" style="margin-bottom:10px">' +
-      '<div class="sec" style="margin-top:0">By specials block</div>' +
+      '<div class="sec" style="margin-top:0">By subject</div>' +
       buildBlockHeatmap(incidents) +
     '</div>';
 
@@ -416,7 +368,7 @@ function renderProfile(name, stu, incidents, faRows, accRows, body) {
   var primaryHtml =
     buildAcc('stu', 'timeline',  'Behavioral timeline', (total + qcCount) + ' events', timelineHtml, true) +
     buildAcc('stu', 'academics', 'Academic performance', 'recent scores + trend',       academicsHtml, true) +
-    buildAcc('stu', 'blocks',    'Block pattern',       'by specials class',            heatHtml,     false) +
+    buildAcc('stu', 'blocks',    'Subject pattern',     'where events happen',          heatHtml,     false) +
     buildAcc('stu', 'pattern',   'Day/time heatmap',    '',                             patternHtml,  false) +
     buildAcc('stu', 'trend',     'Weekly trend',        '',                             weeklyHtml,   false) +
     buildAcc('stu', 'firstaid',  'First aid / injury log', faRows.length + ' records', faHtml,       false);

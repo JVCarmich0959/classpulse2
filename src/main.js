@@ -3611,7 +3611,7 @@ function renderIncidentList(rows, container, onAfterEdit){
                 escHtml(r.from_color) + ' \u2192 ' +
                 '<span style="color:' + colorFill(r.to_color) + '">' + escHtml(r.to_color) + '</span>' +
               '</div>' +
-              '<div style="font-size:11px;color:var(--text3)">' + escHtml(r.specials) + ' \u00B7 ' + escHtml(r.date) + '</div>' +
+              '<div style="font-size:11px;color:var(--text3)">' + escHtml(r.specials) + ' \u00B7 ' + escHtml(r.date) + ((r.incident_time || r.time) ? ' \u00B7 ' + escHtml(r.incident_time || r.time) : '') + '</div>' +
             '</div>' +
             (r.duration_mins !== null
               ? '<div style="font-size:11px;color:var(--text3);margin-bottom:3px">Duration: ' + r.duration_mins + ' min</div>'
