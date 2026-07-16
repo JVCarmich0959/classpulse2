@@ -405,7 +405,11 @@ function getStuPrevScreen(){ return STU_PREV_SCREEN||'S-detail'; }
 function setDetPrevScreen(v){ DET_PREV_SCREEN=v||'S-classes'; }
 function todayStr(){return new Date().toISOString().split('T')[0];}
 function nowStr(){var d=new Date();return d.toTimeString().slice(0,5);}
-function freshEntry(){return{studentName:'',homeroom:'',specials:'',behaviors:[],date:todayStr(),time:nowStr(),colorChart:false,colorTransition:'',colorResolved:false,homeContact:false,motivation:'',contactMethod:'',notes:''};}
+// remembered across entries so back-to-back logs skip re-picking class; cleared on sign out
+var LAST_CLASS={homeroom:'',specials:''};
+// review-step "Adjust time" inputs stay hidden until asked for; reset per entry
+var ADJ_TIME_OPEN=false;
+function freshEntry(){ADJ_TIME_OPEN=false;return{studentName:'',homeroom:LAST_CLASS.homeroom,specials:LAST_CLASS.specials,behaviors:[],date:todayStr(),time:nowStr(),colorChart:false,colorTransition:'',colorResolved:false,homeContact:false,motivation:'',contactMethod:'',notes:''};}
 function el(id){return document.getElementById(id);}
 function pb(pct,col){return '<div class="pbar"><div style="--pw:'+Math.min(pct,100)+'%;background:'+col+'" class="pfill"></div></div>';}
 
@@ -1160,6 +1164,7 @@ function signOut(){
   SESSION.token = null; SESSION.email = null; SESSION.userId = null; SESSION.role = null; SESSION.refresh = null;
   try{localStorage.removeItem('sb_token');localStorage.removeItem('sb_email');localStorage.removeItem('sb_uid');localStorage.removeItem('sb_refresh');}catch(e){}
   STATE.liveRows = []; STATE.liveLoaded = false; STATE.liveError = false;
+  LAST_CLASS.homeroom = ''; LAST_CLASS.specials = '';
   STATE.logs = []; STATE.entry = freshEntry(); STATE.step = 0;
   showScreen('S-login');
   // re-attach login listeners on the now-visible form
@@ -1264,21 +1269,57 @@ function showPane(pane){
 }
 
 // ── STEP FORM ──
-var SLBL=['Step 1 of 4 · Scholar & class','Step 2 of 4 · Behavior type','Step 3 of 4 · Timing','Step 4 of 4 · Response & notes'];
+var SLBL=['Step 1 of 3 · Scholar & class','Step 2 of 3 · Behavior type','Step 3 of 3 · Response & notes'];
 function renderStep(){
-  el('step-lbl').textContent=SLBL[STATE.step];
-  el('step-dots').innerHTML=SLBL.map(function(_,i){return '<div class="dot '+(i<STATE.step?'done':i===STATE.step?'active':'')+'"></div>';}).join('');
+  var title=el('log-title');
+  if(STATE.step==='praise'){
+    if(title)title.textContent='Quick praise';
+    el('step-lbl').textContent='Recognize a scholar staying on track';
+    el('step-dots').innerHTML='';
+  }else{
+    if(title)title.textContent='Log Incident';
+    el('step-lbl').textContent=SLBL[STATE.step];
+    el('step-dots').innerHTML=SLBL.map(function(_,i){return '<div class="dot '+(i<STATE.step?'done':i===STATE.step?'active':'')+'"></div>';}).join('');
+  }
   var body=el('step-body');
-  if(STATE.step===0)body.innerHTML=bS1();
+  if(STATE.step==='praise')body.innerHTML=bQP();
+  else if(STATE.step===0)body.innerHTML=bS1();
   else if(STATE.step===1)body.innerHTML=bS2();
-  else if(STATE.step===2)body.innerHTML=bS3();
   else body.innerHTML=bS4();
   attachSL();
+}
+// last 6 distinct scholars this teacher logged, newest first (session logs, then saved)
+function recentScholars(){
+  var seen={},out=[];
+  function add(name,hr){
+    var n=String(name||'').trim();
+    if(!n)return;
+    var k=n.toLowerCase();
+    if(seen[k]||out.length>=6)return;
+    seen[k]=true;out.push({name:n,homeroom:hr||''});
+  }
+  STATE.logs.forEach(function(l){add(l.studentName,l.homeroom);});
+  STATE.myDbLogs.forEach(function(r){add(r.student,r.homeroom);});
+  return out;
+}
+function recentChipsHtml(){
+  var rec=recentScholars();
+  if(!rec.length&&!STATE.myDbLoaded&&SESSION.token){
+    fetchMyLogs(function(){if(STATE.step===0||STATE.step==='praise')renderStep();});
+  }
+  if(!rec.length)return '';
+  var cur=STATE.entry.studentName.trim().toLowerCase();
+  return '<div class="fg"><label class="fl">Recent scholars</label><div class="chips" id="recent-chips">'+
+    rec.map(function(s){
+      var on=cur&&cur===s.name.toLowerCase();
+      return '<button type="button" class="chip'+(on?' on':'')+'" data-recent="'+escAttr(s.name)+'" data-recent-hr="'+escAttr(s.homeroom)+'">'+escHtml(s.name)+'</button>';
+    }).join('')+'</div></div>';
 }
 function bS1(){
   var opts=HOMEROOMS.map(function(h){return '<option value="'+h+'"'+(STATE.entry.homeroom===h?' selected':'')+'>'+h+'</option>';}).join('');
   var chips=getSubjects().map(function(s){return '<button type="button" class="chip'+(STATE.entry.specials===s?' on':'')+'" data-sp="'+s+'">'+s+'</button>';}).join('');
   return '<div style="padding:2px 0 14px"><h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Who is this about?</h3>'+
+    recentChipsHtml()+
     '<div class="fg scholar-ac-wrap"><label class="fl">Scholar name <span class="req">*</span></label><input type="text" id="f-name" placeholder="First Last" value="'+escAttr(STATE.entry.studentName)+'" autocomplete="off" aria-autocomplete="list" aria-expanded="false" aria-controls="f-name-suggestions"><div id="f-name-suggestions" class="scholar-ac" role="listbox"></div></div>'+
     '<div class="fg"><label class="fl">Homeroom class <span class="req">*</span></label><select id="f-hr"><option value="">Select homeroom...</option>'+opts+'</select></div>'+
     '<div class="fg"><label class="fl">'+(SESSION.role==="homeroom"||SESSION.role==="ia"?"Subject / context":"Your class")+' <span class="req">*</span></label><div class="chips" id="sp-chips">'+chips+'</div></div>'+
@@ -1290,14 +1331,30 @@ function bS2(){
     '<div class="fg"><label class="fl">Behavior type(s) <span class="req">*</span></label><div class="chips">'+chips+'</div></div>'+
     '<div class="brow"><button type="button" class="btn-s" id="s2-back">Back</button><button type="button" class="btn-p" id="s2-next">Next</button></div></div>';
 }
-function bS3(){
-  return '<div style="padding:2px 0 14px"><h3 style="font-size:15px;font-weight:600;margin-bottom:14px">When did this happen?</h3>'+
-    '<div class="fg"><label class="fl">Date</label><input type="date" id="f-date" value="'+STATE.entry.date+'"></div>'+
-    '<div class="fg"><label class="fl">Incident time <span style="font-size:11px;color:var(--text3)">(best estimate ok)</span></label><input type="time" id="f-time" value="'+STATE.entry.time+'"></div>'+
-    '<div class="brow"><button type="button" class="btn-s" id="s3-back">Back</button><button type="button" class="btn-p" id="s3-next">Next</button></div></div>';
+// single-screen positive log: scholar + On Track + optional note
+function bQP(){
+  var opts=HOMEROOMS.map(function(h){return '<option value="'+h+'"'+(STATE.entry.homeroom===h?' selected':'')+'>'+h+'</option>';}).join('');
+  var chips=getSubjects().map(function(s){return '<button type="button" class="chip'+(STATE.entry.specials===s?' on':'')+'" data-sp="'+s+'">'+s+'</button>';}).join('');
+  return '<div style="padding:2px 0 14px"><h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Who earned it?</h3>'+
+    '<p style="font-size:12px;color:var(--text2);margin-bottom:14px">A quick positive record — saved as On Track, no incident details needed.</p>'+
+    recentChipsHtml()+
+    '<div class="fg scholar-ac-wrap"><label class="fl">Scholar name <span class="req">*</span></label><input type="text" id="f-name" placeholder="First Last" value="'+escAttr(STATE.entry.studentName)+'" autocomplete="off" aria-autocomplete="list" aria-expanded="false" aria-controls="f-name-suggestions"><div id="f-name-suggestions" class="scholar-ac" role="listbox"></div></div>'+
+    '<div class="fg"><label class="fl">Homeroom class <span class="req">*</span></label><select id="f-hr"><option value="">Select homeroom...</option>'+opts+'</select></div>'+
+    '<div class="fg"><label class="fl">'+(SESSION.role==="homeroom"||SESSION.role==="ia"?"Subject / context":"Your class")+' <span class="req">*</span></label><div class="chips" id="sp-chips">'+chips+'</div></div>'+
+    '<div class="fg"><label class="fl">Note <span style="font-size:11px;color:var(--text3)">(optional)</span></label>'+
+    '<textarea id="f-notes" placeholder="What did the scholar do well?">'+STATE.entry.notes+'</textarea></div>'+
+    '<div class="brow"><button type="button" class="btn-s" id="qp-cancel">Cancel</button><button type="button" class="btn-ok" id="qp-save">Log praise</button></div></div>';
 }
 function bS4(){
+  var when=ADJ_TIME_OPEN?
+    '<div class="card" style="margin-bottom:14px">'+
+      '<div class="fg"><label class="fl">Date</label><input type="date" id="f-date" value="'+STATE.entry.date+'"></div>'+
+      '<div class="fg" style="margin-bottom:0"><label class="fl">Incident time <span style="font-size:11px;color:var(--text3)">(best estimate ok)</span></label><input type="time" id="f-time" value="'+STATE.entry.time+'"></div>'+
+    '</div>':
+    '<div style="font-size:12px;color:var(--text3);margin:-8px 0 14px">Logged for '+STATE.entry.date+' at '+STATE.entry.time+' · '+
+      '<button type="button" id="s4-adjust" style="background:none;border:none;padding:0;font-size:12px;color:var(--indigo);cursor:pointer;text-decoration:underline;text-underline-offset:3px;font-family:inherit">Adjust time</button></div>';
   return '<div style="padding:2px 0 14px"><h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Response taken</h3>'+
+    when+
     '<div class="card" style="margin-bottom:14px">'+
     '<div class="tog-row"><div><div class="tog-lbl">Color chart used</div><div class="tog-sub">Behavior chart shown to student</div></div>'+
     '<label class="tog"><input type="checkbox" id="f-chart"'+(STATE.entry.colorChart?' checked':'')+'>'+
@@ -1575,15 +1632,18 @@ function attachSL(){
   var fhr=el('f-hr');if(fhr)fhr.addEventListener('change',function(){STATE.entry.homeroom=fhr.value;});
   wireScholarAutocomplete();
   document.querySelectorAll('[data-sp]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.specials=btn.dataset.sp;document.querySelectorAll('[data-sp]').forEach(function(b){b.classList.toggle('on',b.dataset.sp===STATE.entry.specials);});});});
+  document.querySelectorAll('[data-recent]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.studentName=btn.dataset.recent;if(btn.dataset.recentHr)STATE.entry.homeroom=btn.dataset.recentHr;renderStep();});});
   var s1n=el('s1-next');
-  if(s1n)s1n.addEventListener('click',function(){if(!STATE.entry.studentName.trim()||!STATE.entry.homeroom||!STATE.entry.specials){alert('Please fill in scholar name, homeroom, and subject.');return;}STATE.step=1;renderStep();});
+  if(s1n)s1n.addEventListener('click',function(){if(!STATE.entry.studentName.trim()||!STATE.entry.homeroom||!STATE.entry.specials){showToast('Please fill in scholar name, homeroom, and subject.','error');return;}LAST_CLASS.homeroom=STATE.entry.homeroom;LAST_CLASS.specials=STATE.entry.specials;STATE.step=1;renderStep();});
   document.querySelectorAll('[data-beh]').forEach(function(btn){btn.addEventListener('click',function(){var b=btn.dataset.beh,idx=STATE.entry.behaviors.indexOf(b);if(idx>=0)STATE.entry.behaviors.splice(idx,1);else STATE.entry.behaviors.push(b);document.querySelectorAll('[data-beh]').forEach(function(c){c.classList.toggle('on',STATE.entry.behaviors.indexOf(c.dataset.beh)>=0);});});});
   var s2b=el('s2-back');if(s2b)s2b.addEventListener('click',function(){STATE.step=0;renderStep();});
-  var s2n=el('s2-next');if(s2n)s2n.addEventListener('click',function(){if(!STATE.entry.behaviors.length){alert('Please select at least one behavior type.');return;}STATE.step=2;renderStep();});
+  var s2n=el('s2-next');if(s2n)s2n.addEventListener('click',function(){if(!STATE.entry.behaviors.length){showToast('Please select at least one behavior type.','error');return;}STATE.step=2;renderStep();});
   var fd=el('f-date');if(fd)fd.addEventListener('change',function(){STATE.entry.date=fd.value;});
   var ft=el('f-time');if(ft)ft.addEventListener('change',function(){STATE.entry.time=ft.value;});
-  var s3b=el('s3-back');if(s3b)s3b.addEventListener('click',function(){STATE.step=1;renderStep();});
-  var s3n=el('s3-next');if(s3n)s3n.addEventListener('click',function(){STATE.step=3;renderStep();});
+  var s4adj=el('s4-adjust');if(s4adj)s4adj.addEventListener('click',function(){ADJ_TIME_OPEN=true;renderStep();});
+  var qpc=el('qp-cancel');if(qpc)qpc.addEventListener('click',function(){STATE.entry=freshEntry();STATE.step=0;renderStep();});
+  var qps=el('qp-save');
+  if(qps)qps.addEventListener('click',function(){if(!STATE.entry.studentName.trim()||!STATE.entry.homeroom||!STATE.entry.specials){showToast('Please fill in scholar name, homeroom, and subject.','error');return;}LAST_CLASS.homeroom=STATE.entry.homeroom;LAST_CLASS.specials=STATE.entry.specials;STATE.entry.behaviors=['On Track'];submitEntry();});
   var fc=el('f-chart');if(fc)fc.addEventListener('change',function(){STATE.entry.colorChart=fc.checked;if(!fc.checked){STATE.entry.colorTransition='';STATE.entry.colorResolved=false;}renderStep();});
   document.querySelectorAll('[data-color]').forEach(function(btn){
     btn.addEventListener('click',function(){
@@ -1596,11 +1656,14 @@ function attachSL(){
   document.querySelectorAll('[data-mot]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.motivation=STATE.entry.motivation===btn.dataset.mot?'':btn.dataset.mot;renderStep();});});
   document.querySelectorAll('[data-contact]').forEach(function(btn){btn.addEventListener('click',function(){STATE.entry.contactMethod=STATE.entry.contactMethod===btn.dataset.contact?'':btn.dataset.contact;renderStep();});});
   var fn2=el('f-notes');if(fn2)fn2.addEventListener('input',function(){STATE.entry.notes=fn2.value;});
-  var s4b=el('s4-back');if(s4b)s4b.addEventListener('click',function(){STATE.step=3;renderStep();});
+  var s4b=el('s4-back');if(s4b)s4b.addEventListener('click',function(){STATE.step=1;renderStep();});
   var sub=el('s4-sub');
-  if(sub)sub.addEventListener('click',function(){
+  if(sub)sub.addEventListener('click',submitEntry);
+}
+// shared save path for the step flow (s4-sub) and quick praise (qp-save)
+function submitEntry(){
     var e=STATE.entry;
-    if(e.colorChart&&!e.colorTransition){alert('Please select a color transition.');return;}
+    if(e.colorChart&&!e.colorTransition){showToast('Please select a color transition.','error');return;}
     var extra=[];
     if(e.motivation) extra.push('Motivation: '+e.motivation);
     if(e.homeContact&&e.contactMethod) extra.push('Contact method: '+e.contactMethod);
@@ -1650,7 +1713,6 @@ function attachSL(){
         checkAndNotify(e,null);
       });
     }).catch(function(err){console.warn('Supabase insert failed',err);showToast('Could not connect', 'error');});
-  });
 }
 function closeSheet(){el('T-sheet').classList.remove('show');el('T-overlay').classList.remove('show');STATE.entry=freshEntry();STATE.step=0;renderStep();}
 
@@ -2066,7 +2128,7 @@ function promoteToIncident(){
   STATE.entry.colorChart = true;
   STATE.entry.colorTransition = btn.dataset.color || '';
   STATE.entry.notes = notes;
-  STATE.step = 3;
+  STATE.step = 2;
   renderStep();
 }
 
@@ -2953,7 +3015,7 @@ function bOV(live){
     kpiH('Behavior records',tot,dateRange,false)+
     kpiH('Per logged day',perDay,uniqueDays+' logged days',false)+
     kpiH('Color chart used',chartPct+'%',(LD.chart_yes||0)+' of '+incTotal+' incidents',false)+
-    kpiH('Home contacted',homePct+'%',(LD.home_yes||0)+' of '+incTotal+' incidents',true)+
+    kpiH('Home contacted',homePct+'%',(LD.home_yes||0)+' of '+incTotal+' incidents',homePct<50)+
     '</div>';
   var weeklyCard='<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">Weekly records / logged day</div>'+
     '<canvas id="c-wk" height="80" style="width:100%;display:block" data-live="1"></canvas>'+
@@ -4418,6 +4480,7 @@ function drawBar(id,labels,data,colors){
 
 // ── WIRE EVENTS ──
 el('btn-t-signout') && el('btn-t-signout').addEventListener('click',signOut);
+el('btn-quick-praise') && el('btn-quick-praise').addEventListener('click',function(){STATE.entry=freshEntry();STATE.step='praise';showPane('log');renderStep();});
 el('btn-th-signout') && el('btn-th-signout').addEventListener('click',signOut);
 var bae=el('btn-a-signout');    if(bae) bae.addEventListener('click',signOut);
 var btt=el('btn-theme-toggle'); if(btt) btt.addEventListener('click',toggleTheme);
