@@ -351,7 +351,7 @@ function emailToDisplayName(email){
 }
 
 
-var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login',firstAidRows:[],firstAidLoaded:false,firstAidError:false,faFilterSpecials:'all',faFilterHome:'all',notifRows:[],notifLoaded:false,notifPollTimer:null};
+var STATE={step:0,entry:null,logs:[],myDbLogs:[],myDbLoaded:false,adminTab:'overview',clsFilter:'all',liveRows:[],liveLoaded:false,liveError:false,currentScreen:'S-login',firstAidRows:[],firstAidLoaded:false,firstAidError:false,faFilterSpecials:'all',faFilterHome:'all',notifRows:[],notifLoaded:false,notifPollTimer:null,attRows:[],attLoaded:false,attError:false,acadStats:null,acadLoaded:false,acadError:false};
 var STU_PREV_SCREEN='S-detail';
 var DET_PREV_SCREEN='S-classes';
 var DET_PHYSICS = {
@@ -1164,6 +1164,8 @@ function signOut(){
   SESSION.token = null; SESSION.email = null; SESSION.userId = null; SESSION.role = null; SESSION.refresh = null;
   try{localStorage.removeItem('sb_token');localStorage.removeItem('sb_email');localStorage.removeItem('sb_uid');localStorage.removeItem('sb_refresh');}catch(e){}
   STATE.liveRows = []; STATE.liveLoaded = false; STATE.liveError = false;
+  STATE.attRows = []; STATE.attLoaded = false; STATE.attError = false;
+  STATE.acadStats = null; STATE.acadLoaded = false; STATE.acadError = false;
   LAST_CLASS.homeroom = ''; LAST_CLASS.specials = '';
   STATE.logs = []; STATE.entry = freshEntry(); STATE.step = 0;
   showScreen('S-login');
@@ -2773,6 +2775,13 @@ function renderAdmin(){
         renderAdmin();
       });
     });
+    var faRetry = el('fa-retry');
+    if (faRetry) faRetry.addEventListener('click', function() {
+      STATE.firstAidLoaded = false;
+      STATE.firstAidError = false;
+      renderAdmin();
+    });
+    wireStudentLinks(body,'S-admin');
   }
   setTimeout(drawCharts,60);
   if(t === 'overview') {
@@ -2792,6 +2801,60 @@ function renderAdmin(){
   });
 }
 
+
+// ── ATTENDANCE (today) ──
+function fetchAttendance(cb){
+  if(!SESSION.token){ STATE.attLoaded=true; if(cb) cb(); return; }
+  var q='select=student_name,homeroom,present,tardy,excused&attendance_date=eq.'+todayStr()+'&limit=1000';
+  fetch(SB_URL+'/rest/v1/attendance?'+q,{
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SESSION.token}
+  }).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(rows){
+    STATE.attRows=rows||[];
+    STATE.attLoaded=true;
+    STATE.attError=false;
+    if(cb) cb();
+  }).catch(function(err){
+    console.warn('fetchAttendance error',err);
+    STATE.attRows=[];
+    STATE.attLoaded=true;
+    STATE.attError=true;
+    if(cb) cb();
+  });
+}
+// detailed full-width KPI card for today's attendance on the admin overview
+function attendanceCard(){
+  var base='<div class="kpi" style="grid-column:1 / -1">';
+  if(!STATE.attLoaded){
+    return base+'<div class="lbl">Attendance today</div><div class="val">…</div><div class="sub">Loading</div></div>';
+  }
+  if(STATE.attError){
+    return base+'<div class="lbl">Attendance today</div><div class="val">—</div><div class="sub">Could not load attendance</div></div>';
+  }
+  var rows=STATE.attRows||[];
+  if(!rows.length){
+    return base+'<div class="lbl">Attendance today</div><div class="val">—</div><div class="sub">No attendance recorded for '+todayStr()+' yet</div></div>';
+  }
+  var marked=rows.length;
+  var present=rows.filter(function(r){return r.present;}).length;
+  var absent=marked-present;
+  var tardy=rows.filter(function(r){return r.tardy;}).length;
+  var excused=rows.filter(function(r){return !r.present&&r.excused;}).length;
+  var rate=Math.round(present/marked*100);
+  var flag=rate<90;
+  // homeroom with the most absences, so the admin knows where to look first
+  var byHr={};
+  rows.forEach(function(r){ if(!r.present){ var h=r.homeroom||'—'; byHr[h]=(byHr[h]||0)+1; } });
+  var worst=Object.keys(byHr).sort(function(a,b){return byHr[b]-byHr[a];})[0];
+  return base+
+    '<div class="lbl">Attendance today</div>'+
+    '<div class="val" style="color:'+(flag?'var(--red)':'var(--text)')+'">'+rate+'% present</div>'+
+    '<div class="sub">'+present+' of '+marked+' marked · '+absent+' absent ('+excused+' excused) · '+tardy+' tardy · '+(flag?'below':'meets')+' 90% target'+
+    (worst?'<br>Most absences: '+escHtml(worst)+' ('+byHr[worst]+')':'')+
+    '</div></div>';
+}
 
 function fetchFirstAid(cb){
   if(!SESSION.token){ STATE.firstAidLoaded=true; if(cb) cb(new Error('not authenticated'),[]); return; }
@@ -2820,7 +2883,7 @@ function bFA() {
     return skeletonRows(4);
   }
   if (STATE.firstAidError) {
-    return '<div class="card">' + emptyState('Could not load records', 'Check your connection and try again.') + '<div style="text-align:center;padding-bottom:20px"><button class="pill" onclick="STATE.firstAidLoaded=false;STATE.firstAidError=false;renderAdmin()">Retry</button></div></div>';
+    return '<div class="card">' + emptyState('Could not load records', 'Check your connection and try again.') + '<div style="text-align:center;padding-bottom:20px"><button class="pill" id="fa-retry">Retry</button></div></div>';
   }
 
   var all = STATE.firstAidRows || [];
@@ -2890,6 +2953,10 @@ function bFA() {
             (r.staff_notified ? '<div style="font-size:11px;color:var(--text2);margin-bottom:4px"><span style="color:var(--text3)">Staff notified: </span>' + escHtml(r.staff_notified) + '</div>' : '') +
             (r.homeroom ? '<div style="font-size:11px;color:var(--text2);margin-bottom:4px"><span style="color:var(--text3)">Homeroom: </span>' + escHtml(r.homeroom) + '</div>' : '') +
             (r.notes ? '<div style="font-size:11px;color:var(--text2);margin-top:6px;line-height:1.6">' + escHtml(r.notes) + '</div>' : '') +
+            (r.student ? '<div style="margin-top:10px" onclick="event.stopPropagation()">' +
+              '<button class="pill" style="font-size:10px;padding:4px 10px" data-stu="' + escAttr(r.student) + '">' +
+                'View ' + escHtml(String(r.student).split(' ')[0]) + '\'s profile' +
+              '</button></div>' : '') +
           '</div>' +
         '</div>';
       }).join('')
@@ -2915,10 +2982,83 @@ function toggleFA(id) {
   if (chevron) chevron.classList.toggle('open', !open);
   card.style.borderLeft = open ? '' : '2px solid var(--indigo)';
 }
+// inline onclick in bFA cards resolves against window, not module scope
+if(typeof window!=='undefined') window.toggleFA=toggleFA;
 
 
-// Academics tab — launchers for the DDI workflow surfaces.
-// Closed-loop reteach outcome tracking lands in the next PR.
+// ── ACADEMICS SUMMARY (at-a-glance data above the launchers) ──
+function fetchAcadSummary(cb){
+  if(!SESSION.token){ STATE.acadLoaded=true; if(cb) cb(); return; }
+  Promise.all([
+    authedFetch('/rest/v1/assessment_events?select=id,title,subject,grade_level,administered_date,max_score&order=administered_date.desc&limit=5'),
+    authedFetch('/rest/v1/academic_scores?select=assessment_event_id,score,proficiency&order=recorded_at.desc&limit=1000'),
+    authedFetch('/rest/v1/action_plans?select=id,topic,status,target_check_date,owner_email&order=created_at.desc&limit=100'),
+    authedFetch('/rest/v1/data_meetings?select=meeting_date,grade_level,subject&order=meeting_date.desc&limit=1')
+  ]).then(function(rs){
+    return Promise.all(rs.map(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }));
+  }).then(function(out){
+    STATE.acadStats={events:out[0]||[],scores:out[1]||[],plans:out[2]||[],lastMeeting:(out[3]||[])[0]||null};
+    STATE.acadLoaded=true;
+    STATE.acadError=false;
+    if(cb) cb();
+  }).catch(function(err){
+    console.warn('fetchAcadSummary error',err);
+    STATE.acadStats=null;
+    STATE.acadLoaded=true;
+    STATE.acadError=true;
+    if(cb) cb();
+  });
+}
+function acadSummaryHtml(){
+  if(!STATE.acadLoaded){
+    fetchAcadSummary(function(){ if(STATE.adminTab==='academics'&&STATE.currentScreen==='S-admin') renderAdmin(); });
+    return skeletonKpis(4);
+  }
+  if(STATE.acadError||!STATE.acadStats){
+    return '<div class="card" style="margin-bottom:12px"><div style="font-size:12px;color:var(--text3);padding:4px 0">Could not load academic data — the launchers below still work.</div></div>';
+  }
+  var S=STATE.acadStats;
+  var events=S.events,scores=S.scores,plans=S.plans;
+  if(!events.length){
+    return '<div class="card" style="margin-bottom:12px">'+
+      '<div style="font-size:13px;font-weight:600;margin-bottom:4px">No assessments yet</div>'+
+      '<div style="font-size:12px;color:var(--text2)">Enter your first exit ticket or quiz in Score Entry and this space becomes your at-a-glance academic dashboard.</div></div>';
+  }
+  var scored=scores.filter(function(s){return s.score!=null;});
+  var green=scored.filter(function(s){return s.proficiency==='green';}).length;
+  var greenPct=scored.length?Math.round(green/scored.length*100):0;
+  var active=plans.filter(function(p){return p.status==='active';});
+  var today=todayStr();
+  var overdue=active.filter(function(p){return p.target_check_date&&p.target_check_date<today;}).length;
+  var kpis='<div class="kpi-grid" style="margin-bottom:12px">'+
+    kpiH('Assessments',events.length>=5?'5+':events.length,'latest '+(events[0].administered_date||'—'),false)+
+    kpiH('Scores entered',scored.length,'across recent assessments',false)+
+    kpiH('On grade level',greenPct+'%',green+' of '+scored.length+' scores green',scored.length>0&&greenPct<60)+
+    kpiH('Active plans',active.length,overdue?overdue+' past re-check date':'none past due',overdue>0)+
+    '</div>';
+  var byEvent={};
+  scores.forEach(function(s){
+    if(s.score==null)return;
+    var b=byEvent[s.assessment_event_id]||(byEvent[s.assessment_event_id]={n:0,sum:0,green:0});
+    b.n++;b.sum+=Number(s.score)||0;if(s.proficiency==='green')b.green++;
+  });
+  var subjectLabel={math:'Math',reading:'Reading',writing:'Writing',science:'Science',social_studies:'Social studies'};
+  var list=events.map(function(ev){
+    var b=byEvent[ev.id];
+    var avg=b&&b.n?Math.round(b.sum/b.n):null;
+    var gp=b&&b.n?Math.round(b.green/b.n*100):null;
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border)">'+
+      '<div><div style="font-size:12px;font-weight:600">'+escHtml(ev.title)+'</div>'+
+      '<div style="font-size:10px;color:var(--text3)">'+escHtml(subjectLabel[ev.subject]||ev.subject)+' · Grade '+escHtml(ev.grade_level)+' · '+escHtml(ev.administered_date||'')+'</div></div>'+
+      '<div style="text-align:right;font-size:11px;color:var(--text2)">'+
+      (b&&b.n?('avg '+avg+' of '+Math.round(ev.max_score||100)+' · '+gp+'% green'):'no scores yet')+
+      '</div></div>';
+  }).join('');
+  var meeting=S.lastMeeting?'<div style="font-size:10px;color:var(--text3);padding-top:8px">Last data meeting: '+escHtml(S.lastMeeting.meeting_date)+' · Grade '+escHtml(S.lastMeeting.grade_level)+' '+escHtml(subjectLabel[S.lastMeeting.subject]||S.lastMeeting.subject)+'</div>':'';
+  return kpis+buildAcc('ac','recent','Recent assessments',events.length+' shown',list+meeting,true);
+}
+
+// Academics tab — at-a-glance summary + launchers for the DDI workflow surfaces.
 function bAC(){
   function card(id, title, body, cta){
     return '<div class="card" style="padding:18px">' +
@@ -2927,7 +3067,8 @@ function bAC(){
       '<button id="'+id+'" class="btn-primary" style="padding:10px 16px;font-weight:600">'+cta+' →</button>' +
     '</div>';
   }
-  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+  return acadSummaryHtml() +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
     card('acad-launch-enter','Score Entry',
       'Record exit ticket and quiz scores. Keyboard-driven, auto-saves, bulk paste from Excel.',
       'Enter Scores') +
@@ -3006,15 +3147,12 @@ function bOV(live){
   var LD=live||{};
   var incTotal=LD.inc_total||0;
   var tot=(LD.total||0)+STATE.logs.length;
-  var chartPct=incTotal?Math.round((LD.chart_yes||0)/incTotal*100):0;
   var homePct=incTotal?Math.round((LD.home_yes||0)/incTotal*100):0;
   var dateRange=LD.date_range||'No data';
-  var uniqueDays=LD.unique_days||0;
-  var perDay=LD.per_day||'—';
+  if(!STATE.attLoaded){ fetchAttendance(function(){ if(STATE.adminTab==='overview'&&STATE.currentScreen==='S-admin') renderAdmin(); }); }
   var kpiGrid='<div class="kpi-grid">' +
+    attendanceCard()+
     kpiH('Behavior records',tot,dateRange,false)+
-    kpiH('Per logged day',perDay,uniqueDays+' logged days',false)+
-    kpiH('Color chart used',chartPct+'%',(LD.chart_yes||0)+' of '+incTotal+' incidents',false)+
     kpiH('Home contacted',homePct+'%',(LD.home_yes||0)+' of '+incTotal+' incidents',homePct<50)+
     '</div>';
   var weeklyCard='<div class="card"><div style="font-size:12px;color:var(--text2);margin-bottom:8px">Weekly records / logged day</div>'+
