@@ -141,9 +141,11 @@ student_grades:
   score, score_type ('test'|'quiz'|'assignment'|'observation'),
   grading_period, logged_by, school_year, school_id, created_at
 
-student_attendance:
-  id, student_name, homeroom, date, status ('present'|'absent'|'tardy'|'early_release'),
-  reason, logged_by, school_year, school_id, created_at
+attendance (BUILT — exists in Supabase as public.attendance, captured in
+supabase/migrations/20260914230000_attendance.sql; the admin overview's
+"Attendance today" KPI reads it):
+  id, student_name, homeroom, attendance_date, present, tardy, excused,
+  notes, submitted_by, school_year, school_id, created_at
 
 When these tables exist, the scholar profile will show:
 - Attendance KPIs (present %, consecutive absences flag)
