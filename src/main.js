@@ -1259,7 +1259,7 @@ function updateTeacherNav(){
   if(sw) sw.style.display = SESSION.role === 'admin' ? '' : 'none';
 }
 
-function goAdmin(){updateUserDisplay();showScreen('S-admin');STATE.adminTab='overview';document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='overview');});startNotifPolling();renderAdmin();updateLogBadge();maybeInitProfileDropdown();}
+function goAdmin(){updateUserDisplay();showScreen('S-admin');STATE.adminTab='overview';STATE.attLoaded=false;STATE.attError=false;document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='overview');});startNotifPolling();renderAdmin();updateLogBadge();maybeInitProfileDropdown();}
 function showPane(pane){
   el('T-log').style.display  = pane==='log'  ? 'flex' : 'none';
   el('T-hist').style.display = pane==='hist' ? 'flex' : 'none';
@@ -2709,7 +2709,7 @@ function buildLiveStats(rows){
 }
 
 // ── ADMIN ──
-function setTab(t){var prev=STATE.adminTab;if(prev==='overview'&&t!=='overview') stopSchoolWide();STATE.adminTab=t;document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab===t);});renderAdmin();if(t==='overview') setTimeout(function(){ if(!SW_STATE.running) { initSchoolWide(); initSWHover(); } },100);}
+function setTab(t){var prev=STATE.adminTab;if(prev==='overview'&&t!=='overview') stopSchoolWide();if(t==='academics')STATE.acadLoaded=false;STATE.adminTab=t;document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab===t);});renderAdmin();if(t==='overview') setTimeout(function(){ if(!SW_STATE.running) { initSchoolWide(); initSWHover(); } },100);}
 
 // Interpretation note shown once at top of admin, persists across tabs
 
@@ -2797,6 +2797,8 @@ function renderAdmin(){
   initPullToRefresh(body, function() {
     STATE.liveLoaded = false;
     STATE.liveError = false;
+    STATE.attLoaded = false;
+    STATE.attError = false;
     renderAdmin();
   });
 }
@@ -2989,18 +2991,26 @@ if(typeof window!=='undefined') window.toggleFA=toggleFA;
 // ── ACADEMICS SUMMARY (at-a-glance data above the launchers) ──
 function fetchAcadSummary(cb){
   if(!SESSION.token){ STATE.acadLoaded=true; if(cb) cb(); return; }
+  var sy='school_year=eq.'+encodeURIComponent(NOTIF_SCHOOL_YEAR);
   Promise.all([
-    authedFetch('/rest/v1/assessment_events?select=id,title,subject,grade_level,administered_date,max_score&order=administered_date.desc&limit=5'),
-    authedFetch('/rest/v1/academic_scores?select=assessment_event_id,score,proficiency&order=recorded_at.desc&limit=1000'),
-    authedFetch('/rest/v1/action_plans?select=id,topic,status,target_check_date,owner_email&order=created_at.desc&limit=100'),
-    authedFetch('/rest/v1/data_meetings?select=meeting_date,grade_level,subject&order=meeting_date.desc&limit=1')
+    authedFetch('/rest/v1/assessment_events?select=id,title,subject,grade_level,administered_date,max_score&'+sy+'&order=administered_date.desc&limit=5'),
+    authedFetch('/rest/v1/action_plans?select=id,topic,status,target_check_date,owner_email&'+sy+'&order=created_at.desc&limit=100'),
+    authedFetch('/rest/v1/data_meetings?select=meeting_date,grade_level,subject&'+sy+'&order=meeting_date.desc&limit=1')
   ]).then(function(rs){
     return Promise.all(rs.map(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }));
   }).then(function(out){
-    STATE.acadStats={events:out[0]||[],scores:out[1]||[],plans:out[2]||[],lastMeeting:(out[3]||[])[0]||null};
-    STATE.acadLoaded=true;
-    STATE.acadError=false;
-    if(cb) cb();
+    var events=out[0]||[];
+    // scores only for the assessments actually shown, so the KPIs match the list
+    var scoresP=events.length?
+      authedFetch('/rest/v1/academic_scores?select=assessment_event_id,score,proficiency&assessment_event_id=in.('+events.map(function(e){return e.id;}).join(',')+')&limit=3000')
+        .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      :Promise.resolve([]);
+    return scoresP.then(function(scores){
+      STATE.acadStats={events:events,scores:scores||[],plans:out[1]||[],lastMeeting:(out[2]||[])[0]||null};
+      STATE.acadLoaded=true;
+      STATE.acadError=false;
+      if(cb) cb();
+    });
   }).catch(function(err){
     console.warn('fetchAcadSummary error',err);
     STATE.acadStats=null;
@@ -4678,6 +4688,7 @@ el('btn-stu-back') && el('btn-stu-back').addEventListener('click',function(){
 });
 
 el('btn-acad-back') && el('btn-acad-back').addEventListener('click',function(){
+  STATE.acadLoaded=false;
   STATE.adminTab='academics';
   showScreen('S-admin',true);
   document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='academics');});
@@ -4685,6 +4696,7 @@ el('btn-acad-back') && el('btn-acad-back').addEventListener('click',function(){
 });
 
 function backToAcademicsTab(){
+  STATE.acadLoaded=false; // re-fetch the summary: scores/plans/meetings may have changed in the launcher
   STATE.adminTab='academics';
   showScreen('S-admin',true);
   document.querySelectorAll('#admin-tabs .tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab==='academics');});
